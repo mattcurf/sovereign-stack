@@ -68,6 +68,11 @@ networking for nested Docker builds/tests; production loaders retain isolation.
 - **CI** runs pin/syntax/unit/renderer checks, builds and smoke-tests all images,
   then independently inventories and scans them. It uploads failure evidence.
   Pull requests have read-only repository permissions and no OIDC signing token.
+  Its five checks are **Code & Workflow Validation**, **Container Build**,
+  **Runtime Security & HTTP Tests**, **SBOM Generation & License Reports**, and
+  **CVE Check (Fixable High & Critical)**. Smoke tests and SBOM collection run in
+  parallel after the build; CVE checking consumes the generated inventories without
+  rebuilding images. A CVE failure does not mark SBOM generation as failed.
 - **Publish signed stack** runs only on pushes to `main`. A read-only build job
   gates the images; a separate privileged job uploads them to
   `ghcr.io/mattcurf/sovereign-stack/<component>`, signs immutable digests, attaches
@@ -87,8 +92,9 @@ networking for nested Docker builds/tests; production loaders retain isolation.
 
 Opening a PR does not publish artifacts. On first successful main publication,
 an owner may need to set GHCR package visibility/access deliberately; the workflow
-does not change registry permissions. Enable branch protection and require both
-CI jobs before merging. Publishing needs Actions package-write, contents-write
+does not change registry permissions. Enable branch protection and require all five
+named CI checks before merging (replace any old `validate`/`containers` requirements).
+Publishing needs Actions package-write, contents-write
 (release assets), and OIDC permissions. There are no production deployment secrets.
 
 ## Run a published stack

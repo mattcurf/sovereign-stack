@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Independent evidence generation; no app execution, no signing credentials needed.
 set -euo pipefail
-[[ $# == 2 ]] || { echo 'Usage: scripts/evidence.sh IMAGE OUTPUT_DIR' >&2; exit 2; }
+[[ $# == 2 || ( $# == 3 && $3 == --collect-only ) ]] || { echo 'Usage: scripts/evidence.sh IMAGE OUTPUT_DIR [--collect-only]' >&2; exit 2; }
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 export PATH="$ROOT/.tools/bin:$PATH"
 IMAGE=${1#docker:}
@@ -73,6 +73,7 @@ pathlib.Path(sys.argv[2]).write_text(json.dumps(records, indent=2) + '\n')
 PY
 fi
 # Generate notices before Grype: failures must retain all already collected evidence.
+if [[ ${3:-} == --collect-only ]]; then exit 0; fi
 RESULT=0
 TARGETS=("$OUT" "$OUT/build-provenance")
 if [[ -n $SOURCE ]]; then TARGETS+=("$OUT/source"); fi

@@ -22,7 +22,7 @@ def repository_materials(root, repo, commit):
         path = Path(name)
         if not (
             path.parts[0] in {"base-container", "nginx", "rust", "python"}
-            or name == "tools/lock.json"
+            or name in {"tools/lock.json", "docker-bake.hcl", ".github/actions/build-images/action.yml"}
         ):
             continue
         target = root / path

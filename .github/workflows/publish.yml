@@ -9,16 +9,16 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    name: Build, Test & Security Gate
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: ./tools/install.sh
-      - run: echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/setup-tools
       - run: ./scripts/check.sh
-      - run: ./scripts/build-images.sh
+      - uses: ./.github/actions/build-images
       - run: ./scripts/smoke-images.sh
       - run: ./scripts/scan-images.sh
       - name: Export gated images
@@ -46,6 +46,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
   publish:
+    name: Publish, Sign & Verify
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -65,8 +66,7 @@ jobs:
         with:
           name: release-evidence
           path: evidence
-      - run: ./tools/install.sh
-      - run: echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/setup-tools
       - name: Publish, sign, attest, verify and index
         env:
           GH_TOKEN: ${{ github.token }}

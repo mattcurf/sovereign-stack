@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ $# == 0 || ( $# == 1 && $1 == --collect-only ) ]] || { echo 'Usage: tool-evidence.sh [--collect-only]' >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 export PATH="$root/.tools/bin:$PATH"
 out="$root/evidence/tools"
@@ -12,4 +13,5 @@ SYFT_CHECK_FOR_APP_UPDATE=false SYFT_LICENSE_CONTENT=all \
   -o "cyclonedx-json=$out/sbom.cyclonedx.json" 2> "$out/syft.log"
 cp "$root/tools/lock.json" "$out/lock.json"
 python3 "$root/scripts/license-report.py" "$out/sbom.syft.json" "$out"
+if [[ ${1:-} == --collect-only ]]; then exit 0; fi
 "$root/scripts/scan-sbom.sh" "$out/sbom.syft.json" "$out"

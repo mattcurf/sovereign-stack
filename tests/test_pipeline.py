@@ -13,8 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 class PinPolicy(unittest.TestCase):
     def test_every_remote_action_is_a_full_commit(self):
         count = 0
-        for path in (ROOT / '.github/workflows').glob('*.yml'):
+        for path in (ROOT / '.github').rglob('*.yml'):
             for action in re.findall(r'uses:\s*(\S+)', path.read_text()):
+                if action.startswith('./.github/actions/'):
+                    self.assertTrue((ROOT / action / 'action.yml').is_file())
+                    continue
                 count += 1
                 self.assertRegex(action, r'^[\w.-]+/[\w./-]+@[0-9a-f]{40}$', str(path))
         self.assertGreater(count, 0)
@@ -79,6 +82,43 @@ class Orchestration(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('Publishing requires', result.stderr)
         self.assertNotIn('Login', result.stdout)
+
+    def test_cve_job_requires_every_inventory_and_continues_after_failure(self):
+        shutil.copy(ROOT / 'scripts/check-cves.sh', self.root / 'scripts')
+        self.script('scan-sbom.sh', '#!/bin/bash\necho "$1" >> scanned\n[[ -f $1 ]] || exit 1\necho report > "$2/grype.json"\n')
+        available = self.root / 'evidence/python-builder/source'
+        available.mkdir(parents=True)
+        (available / 'sbom.syft.json').write_text('{}')
+        result = subprocess.run(['bash', str(self.root / 'scripts/check-cves.sh')])
+        calls = (self.root / 'scanned').read_text().splitlines()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(calls), 25)
+        self.assertEqual(len(set(calls)), 25)
+        self.assertIn('evidence/tools/sbom.syft.json', calls)
+        self.assertIn('evidence/python-builder/source/sbom.syft.json', calls)
+        self.assertEqual((available / 'grype.json').read_text(), 'report\n')
+
+    def test_cache_and_partial_evidence_guards(self):
+        action = (ROOT / '.github/actions/build-images/action.yml').read_text()
+        self.assertIn('cache-binary: false', action)
+        self.assertNotRegex(action, r'(?m)^\s+version:', 'do not replace verified Buildx')
+        scopes = re.findall(r'cache-to=type=gha,version=2,scope=([^,\s]+),mode=max', action)
+        self.assertEqual(len(scopes), 8)
+        self.assertEqual(len(set(scopes)), 8)
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn("!cancelled() && (needs.sbom.result == 'success' || needs.sbom.result == 'failure')", workflow)
+
+    def test_bake_graph_uses_local_base_and_all_eight_tags(self):
+        import json
+        result = subprocess.run([str(ROOT / '.tools/bin/docker-buildx'), 'bake', '--print'],
+                                cwd=ROOT, capture_output=True, text=True, check=True)
+        targets = json.loads(result.stdout)['target']
+        self.assertEqual(len(targets), 8)
+        for name, target in targets.items():
+            self.assertEqual(target['tags'], [f'sovereign-stack/{name}:local'])
+            if not name.startswith('base-container'):
+                self.assertEqual(target['contexts']['sovereign-stack/base-container:local'],
+                                 'target:base-container')
 
 
 if __name__ == '__main__':

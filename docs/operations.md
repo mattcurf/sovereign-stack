@@ -156,3 +156,36 @@ not copied from floating documentation examples):
 - [Docker Compose services](https://docs.docker.com/reference/compose-file/services/)
 
 Component READMEs explain the implementation-specific choices and remaining gaps.
+
+## GitHub Actions caching and stage boundaries
+
+- The shared tool setup uses SHA-pinned `actions/cache`, keyed by OS, architecture,
+  tool lockfile and installer hashes. Every restored archive/binary is still checked
+  against its SHA-256 pin before execution; cache hits never skip verification.
+- CI and main publication use pinned Buildx/BuildKit with Docker Bake. Named target
+  contexts connect applications to the base built in the same graph, not a mutable
+  registry tag. GitHub's cache API v2 stores `mode=max` layers, including intermediate
+  dependency/compiler stages. Each of eight targets has a distinct cache scope to
+  avoid overwriting another image's cache. Dockerfile/input changes invalidate the
+  relevant layers; cache misses perform the normal pinned build.
+- npm, pip and Cargo operate inside builder images, so their dependency installation
+  layers are cached there rather than adding unrelated host package-manager caches.
+  No extra cache-mount persistence action is needed for these Dockerfiles.
+- GitHub scopes pull-request caches to the PR merge ref; main cannot restore caches
+  written by a PR. Never use `pull_request_target` for these builds, cache credentials,
+  Docker authentication, signing material, or promote cached objects as signed releases.
+- Cross-job images and SBOMs are **same-run artifacts**, not caches. Runtime and builder
+  tar archives have distinct names and one-day retention; smoke tests download only
+  runtime images. SBOM/license and complete CVE artifacts are retained 30 days, including
+  failures. Compression level 1 balances tar transfer size against CPU cost.
+- `scan-images.sh --collect-only` produces inventories without claiming a security
+  pass. `bash scripts/check-cves.sh` scans all 25 required inventories, fails on missing
+  inputs and continues collecting other reports after a blocker. Default combined
+  scanning remains available for publication and local use.
+- Vulnerability reports, successful scan statuses and advisory databases are not cached.
+  Every CVE job performs fresh update/freshness checks; rerunning CI must not reuse an
+  old green security decision. Cache availability is an optimization, not evidence.
+
+References: [GitHub cache security and scope](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching),
+[Docker GitHub cache backend](https://docs.docker.com/build/cache/backends/gha/),
+[Docker cache management](https://docs.docker.com/build/ci/github-actions/cache/).

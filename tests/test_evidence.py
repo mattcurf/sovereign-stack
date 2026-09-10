@@ -411,6 +411,7 @@ class PipelineTests(unittest.TestCase):
             "invalid-severity-ignored",
             "invalid-state-ignored",
             "no-source",
+            "collect-only",
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
@@ -435,7 +436,7 @@ class PipelineTests(unittest.TestCase):
                     (root / directory / "Cargo.lock").write_text("test lock")
                 env = dict(
                     os.environ,
-                    TEST_GRYPE=mode,
+                    TEST_GRYPE="database-failure" if mode == "collect-only" else mode,
                     GRYPE_ONLY_FIXED="true",
                     SOURCE_DIR="" if mode == "no-source" else str(root),
                 )
@@ -445,13 +446,13 @@ class PipelineTests(unittest.TestCase):
                         str(root / "scripts/evidence.sh"),
                         "docker:test:local",
                         str(root / "out"),
-                    ],
+                    ] + (["--collect-only"] if mode == "collect-only" else []),
                     env=env,
                     capture_output=True,
                     text=True,
                     check=False,
                 )
-                passed = mode in {"clean", "no-source", "match"}
+                passed = mode in {"clean", "no-source", "match", "collect-only"}
                 self.assertEqual(result.returncode, 0 if passed else 1, result.stderr)
                 prefixes = [root / "out", root / "out/build-provenance"]
                 if mode == "no-source":
@@ -464,6 +465,11 @@ class PipelineTests(unittest.TestCase):
                     )
                 for prefix in prefixes:
                     self.assertTrue((prefix / "THIRD_PARTY_NOTICES").exists())
+                    if mode == "collect-only":
+                        self.assertTrue((prefix / "sbom.syft.json").exists())
+                        self.assertFalse((prefix / "grype.json").exists())
+                        self.assertFalse((prefix / "scan-status.json").exists())
+                        continue
                     self.assertTrue((prefix / "grype.json").exists())
                     if mode == "match":
                         self.assertEqual(len(json.loads((prefix / "grype.json").read_text())["matches"]), 1)
