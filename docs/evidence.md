@@ -77,6 +77,8 @@ Each output contains:
 | `sbom.syft.json` | Native Syft inventory and rich package metadata |
 | `sbom.spdx.json` | SPDX JSON, the predicate file for the image SBOM attestation |
 | `sbom.cyclonedx.json` | CycloneDX JSON representation |
+| `sbom.complete.syft.json` | Unmodified whole-image scan, including retained build evidence |
+| `build-provenance/` | Separate SBOMs, licenses and scan reports for retained build-tool metadata; not installed runtime software |
 | `licenses.json`, `licenses.csv` | Per-package identifiers, discovered texts, attribution references, unresolved reasons |
 | `THIRD_PARTY_NOTICES` | Package index, deduplicated discovered text with locations, unresolved section |
 | `unresolved.json` | Machine-readable evidence gaps; not a fabricated license conclusion |
@@ -85,9 +87,22 @@ Each output contains:
 | `grype-policy.yaml`, `scan-status.json` | Exact policy and fail-closed result |
 | `source/` | Separate repository inventory, same SBOM/license/Grype outputs, plus `lockfiles.json` with source lock contents and hashes |
 
-The image scan uses Syft's installed-software/image catalogers over the final
+The initial image scan uses Syft's installed-software/image catalogers over the final
 merged filesystem (`squashed`), **not** only the application binary. Debian dpkg
-metadata and copyrights remain in the images. The Rust Cargo.lock cataloger is
+metadata and copyrights remain in the images. `partition-sbom.py` separates only
+the repository's reserved build-evidence directories: nginx's retained npm/build-OS
+metadata, base bootstrap documentation, and Python build documentation. Packages
+discovered there belong to `build-provenance/`, not the top-level runtime SBOM.
+Both inventories are scanned and retained; the original whole-image Syft document
+is also retained for audit. Primary package records determine membership when
+available; a shared supporting copyright file does not prove runtime installation.
+A package with primary records in both scopes appears in both inventories with
+the appropriate locations. Unknown locations stay in runtime. No package version,
+advisory, or severity controls this partition.
+License text collection still preserves all image attribution texts, including
+unassociated build notices, in addition to the per-inventory package indexes.
+
+The Rust Cargo.lock cataloger is
 explicitly added so retained static-link dependency metadata is not silently
 ignored. These declared dependencies are a conservative candidate set, not proof
 that every target-specific or build-only crate was linked. Source inventory uses
@@ -99,27 +114,35 @@ packages require scanning the separately tagged **builder images** as well:
 source lockfiles alone cannot reveal all packages installed in a multi-stage
 builder. The parent build/scan pipeline collects runtime and builder inventories.
 
-Both runtime and source inventories use the same `scan-sbom.sh` policy: any actual
-match fails, including unknown/negligible severity and unfixed findings. Ignored
-matches also fail. There are no blanket ignore rules, severity-only gates, VEX
-suppression, or `only-fixed` exceptions. User `GRYPE_*` settings are cleared and
+All runtime, retained build-provenance, builder, source and tooling inventories use
+the same `scan-sbom.sh` policy: only **High or Critical** findings whose fix state
+is `fixed` with a nonempty fixed-version list block CI/publication/nightly audits.
+This means an advisory records an available dependency fix, not necessarily that
+a new consuming tool binary has been released. Lower-severity and unfixed findings
+remain visible but do not block. `grype.json` retains **all** actual and ignored
+matches; no `only-fixed` or severity filter is applied to report generation.
+`scan-status.json` records the versioned policy, total counts and `blockingMatches`.
+Ignored matches meeting the blocking criteria also block; no ignore or VEX rule
+can bypass this predicate. Release validation recomputes it from the full report.
+User `GRYPE_*` settings are cleared and
 an explicit configuration prevents a home-directory config from weakening this
 policy. Database hash validation and age validation are enabled; maximum build
 age is 120 hours; update checks are required on every scan. Failed download,
 failed update check, missing/corrupt database, stale database, malformed report,
 or scanner nonzero status fails the gate. Fresh advisory databases are deliberately
 mutable inputs; archive the report's database metadata for audit, not a stale DB
-to make builds pass. A fresh source scan is attempted even when runtime Grype
-fails. Notices/SBOMs are written **before** Grype, and failed runs retain evidence.
+to make builds pass. Every collected scope is scanned even if another scope fails.
+Notices/SBOMs are written **before** Grype, and failed runs retain evidence.
 
 For nightly historical audits, verify the signed inventory/archive and its
 digest binding before using it; extract only expected regular members, not
-arbitrary archive paths. Scan the original runtime, builder and source Syft
+arbitrary archive paths. Scan the original retained build-provenance, builder and source Syft
 documents with `scan-sbom.sh`; separately rescan each immutable published image
 with `SOURCE_DIR=''`. Never label the current checkout as a historical build's
 source. Signed inventory enumeration must fail on missing or invalid evidence,
-not silently skip an image. A zero-match scan means only **no known matches in
-the examined inventory and database at that time**, not absence of vulnerabilities.
+not silently skip an image. A passing gate means only **no fixable High/Critical
+matches in the examined inventories and database at that time**. It does not mean
+zero CVEs, absence of unfixed severe vulnerabilities, or absence of vulnerabilities.
 
 ## Attribution and license review
 

@@ -63,17 +63,22 @@ differ: compare repeated rootfs/artifact hashes before asserting bit-identical b
 
 ## Vulnerability response
 
-The release gate rejects all known matches, including unfixed vulnerabilities.
+The release gate rejects High/Critical matches with an available fixed version.
+All findings, including unfixed Critical/High findings and lower severities, remain
+in the full Grype reports. Retained build-tool provenance is inventoried separately
+from runtime software; both scopes and the actual builder/tool images are gated.
 Grype database download, validation, or freshness failures also block a release.
-This can legitimately leave the PR red when the newest Debian snapshot has an
-unfixed issue. Preserve reports and explain the blocker; do not add a blanket
+This can legitimately leave the PR red when the latest tool binary embeds a
+dependency with an available fix. Preserve reports and explain the blocker; do not add a blanket
 ignore rule or `continue-on-error` to manufacture a passing build.
 
 For a nightly failure: identify the affected image digest/package/advisory from
 the retained report; stop promoting it; update pins or remove the dependency;
 rebuild, rescan, sign and deploy a new verified digest. Already published images
 are immutable and can become vulnerable without a source change. The historical
-audit deliberately stays red while an indexed release remains vulnerable.
+audit deliberately stays red while an indexed release has a blocking finding.
+Passing CI is not a declaration that the release is CVE-free; assess nonblocking
+findings for actual exposure and remediation priority as well.
 
 If a production deployment permits VEX/risk acceptance, introduce a separate
 reviewed, signed, time-bounded policy identifying the exact digest and advisory.

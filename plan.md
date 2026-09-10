@@ -55,9 +55,10 @@ Use GPT-6 Astra Low subagents for independently owned parallel work where useful
   and narrowly scoped writable tmpfs volumes where needed.
 - Sign and deploy digests, never mutable image tags. Keyless verification trusts
   a public issuer + exact workflow identity, not shared private credentials.
-- A strict scan gates known vulnerabilities (including unfixed findings), without
-  global ignore lists or weakening checks to make CI green. Zero findings means
-  no known findings at that scan time, not immunity to future CVEs.
+- Gate High/Critical vulnerabilities with available fixes; report every finding,
+  including unfixed and lower-severity vulnerabilities. Keep runtime software and
+  retained build-tool provenance in distinct inventories and scan both. Scanner,
+  database and malformed-report errors still fail closed. Passing is not CVE freedom.
 - Pinning alone is not proof of bit-for-bit reproducibility. Normalize build
   timestamps where supported and explain remaining sources of nondeterminism.
 - Do not claim SLSA certification or full sovereignty from using public GitHub,

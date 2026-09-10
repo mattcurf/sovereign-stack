@@ -21,7 +21,7 @@ class RecordedTests(unittest.TestCase):
         self.inventory = {'nginx': 'original-digest'}
         self.members = {'evidence/inventory.json': json.dumps(self.inventory).encode()}
         for name in recorded.COMPONENTS + tuple(n + '-builder' for n in recorded.COMPONENTS) + ('tools',):
-            for prefix in ('', 'source/'):
+            for prefix in ('', 'source/', 'build-provenance/'):
                 self.members[f'evidence/{name}/{prefix}sbom.syft.json'] = json.dumps(
                     {'artifacts': [{'name': f'{name}-{prefix}', 'version': 'original'}]}).encode()
         self.scanner = self.root / 'scanner'
@@ -60,8 +60,9 @@ class RecordedTests(unittest.TestCase):
         self.write_archive()
         self.assertEqual(recorded.rescan(self.archive, self.inventory, self.root / 'out', self.scanner), 1)
         calls = (self.root / 'calls').read_text().splitlines()
-        self.assertEqual(len(calls), 13)
+        self.assertEqual(len(calls), 21)
         self.assertTrue(any('python-builder/source' in call for call in calls))
+        self.assertTrue(any('nginx/build-provenance' in call for call in calls))
         for call in calls:
             self.assertEqual(json.loads(Path(call).read_text())['artifacts'][0]['version'], 'original')
 

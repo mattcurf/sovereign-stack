@@ -4,8 +4,9 @@ An instructive, Linux/amd64 demonstration of a Debian-based software supply chai
 build → test → inventory → scan → publish → sign → verify → run → rescan.
 See [the implementation plan](plan.md) for scope and acceptance criteria.
 
-**Security is a process, not an image label.** Release gates reject known CVEs,
-including unfixed findings. A clean scan is time- and database-dependent. This
+**Security is a process, not an image label.** Release gates reject High/Critical
+findings with available fixes; full reports retain every finding, including unfixed
+and lower-severity CVEs. Passing is time- and database-dependent, not CVE freedom. This
 project does not promise perpetual CVE freedom, certified SLSA compliance, or
 bit-for-bit reproducibility merely because its inputs are pinned.
 
@@ -50,6 +51,10 @@ to ignored `evidence/`; the four runtime images, four builder stages, and instal
 tool binaries are inventoried even when another scan fails. Do not turn a failing
 scan into success by hiding findings.
 
+Runtime SBOMs distinguish installed software from retained build-tool metadata.
+`build-provenance/` holds the latter's inventories and scans; `sbom.complete.syft.json`
+preserves the original whole-image inventory. All scopes use the same blocking policy.
+
 Amp orbs run `.agents/setup` to cache the pinned tools. `.agents/resume` remains
 fast and reconnects a supervised, Unix-socket-only Docker daemon without installing
 dependencies. Container build toolchains live in pinned builder images rather than
@@ -76,7 +81,8 @@ networking for nested Docker builds/tests; production loaders retain isolation.
 - **Nightly artifact audit** runs at 09:23 UTC, enumerates all stack releases
   with pagination, verifies their evidence and every image/attestation, and
   rescans with fresh vulnerability data. It fails when there is no initial
-  release, evidence is missing, verification fails, or known CVEs are found.
+  release, evidence is missing, verification fails, or fixable High/Critical findings
+  are found. Scanner/database errors also fail closed; all CVEs remain in reports.
   Subscribe to Actions failure notifications; nightly reports are kept 90 days.
 
 Opening a PR does not publish artifacts. On first successful main publication,

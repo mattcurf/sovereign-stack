@@ -6,6 +6,8 @@ from pathlib import Path
 import re
 import subprocess
 
+from vulnerability_policy import evaluate
+
 COMPONENTS = ('base-container', 'nginx', 'rust', 'python')
 
 
@@ -24,14 +26,13 @@ def validate(evidence, env, inspect):
     names = COMPONENTS + tuple(name + '-builder' for name in COMPONENTS) + ('tools',)
     # Check every runtime, build, source, and tool gate before any registry write.
     for name in names:
-        scopes = ('',) if name == 'tools' else ('', 'source')
+        scopes = ('',) if name == 'tools' else ('', 'source', 'build-provenance')
         for scope in scopes:
             directory = evidence / name / scope
             status = read(directory / 'scan-status.json')
             report = read(directory / 'grype.json')
-            if (status.get('passed') is not True or status.get('scannerExitCode') != 0
-                    or status.get('matches') != 0 or status.get('ignoredMatches') != 0
-                    or report.get('matches') != [] or report.get('ignoredMatches', []) != []):
+            expected_status = evaluate(report, status['scannerExitCode'])
+            if not expected_status['passed'] or status != expected_status:
                 raise ValueError(f'Unsuccessful release gate: {name}/{scope}')
     result = {}
     for name in COMPONENTS:

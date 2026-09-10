@@ -28,18 +28,15 @@ grype "sbom:$SBOM" --config "$OUT/grype-policy.yaml" -o json \
   > "$OUT/grype.json" 2> "$OUT/grype.log"
 STATUS=$?
 set -e
-python3 - "$OUT" "$STATUS" <<'PY'
+python3 - "$OUT" "$STATUS" "$ROOT/scripts" <<'PY'
 import json, pathlib, sys
+sys.path.insert(0, sys.argv[3])
+from vulnerability_policy import evaluate, POLICY
 out = pathlib.Path(sys.argv[1])
-status = {'scannerExitCode': int(sys.argv[2]), 'passed': False}
+status = {'policy': POLICY, 'scannerExitCode': int(sys.argv[2]), 'passed': False}
 try:
     report = json.loads((out / 'grype.json').read_text())
-    matches = report['matches']
-    ignored = report.get('ignoredMatches', [])
-    if not isinstance(matches, list) or not isinstance(ignored, list):
-        raise ValueError('malformed match arrays')
-    status.update(matches=len(matches), ignoredMatches=len(ignored))
-    status['passed'] = status['scannerExitCode'] == 0 and not matches and not ignored
+    status = evaluate(report, status['scannerExitCode'])
 except (ValueError, KeyError, TypeError) as error:
     status['error'] = str(error)
 (out / 'scan-status.json').write_text(json.dumps(status, indent=2) + '\n')

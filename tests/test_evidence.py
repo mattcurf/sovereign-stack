@@ -26,6 +26,78 @@ def load(name, path):
 licenses = load("licenses", "scripts/license-report.py")
 provenance = load("provenance", "scripts/provenance.py")
 installer = load("installer", "tools/install.py")
+policy = load("policy", "scripts/vulnerability_policy.py")
+partitioner = load("partitioner", "scripts/partition-sbom.py")
+
+
+class InventoryTests(unittest.TestCase):
+    def test_build_only_mixed_unknown_and_linked_rust_locations(self):
+        build = "/usr/share/sovereign-stack/nginx/npm/package.json"
+        runtime = "/usr/local/lib/node_modules/npm/package.json"
+        paths = {
+            "build": [build],
+            "mixed": [build, runtime],
+            "runtime": [runtime],
+            "rust": ["/usr/share/sovereign-stack/rust/Cargo.lock"],
+            "neighbor": ["/usr/share/sovereign-stack/nginx-other/package.json"],
+            "unknown": [],
+        }
+        document = {
+            "artifacts": [{"id": name, "locations": [{"path": p} for p in locations]}
+                          for name, locations in paths.items()],
+            "files": [{"id": "bf", "location": {"path": build}},
+                      {"id": "rf", "location": {"path": runtime}}],
+            "artifactRelationships": [{"parent": "build", "child": "bf"},
+                                      {"parent": "runtime", "child": "rf"}],
+        }
+        result = partitioner.partition(document, False)
+        retained = partitioner.partition(document, True)
+        self.assertEqual({p["id"] for p in result["artifacts"]},
+                         {"mixed", "runtime", "rust", "neighbor", "unknown"})
+        self.assertEqual({p["id"] for p in retained["artifacts"]}, {"build", "mixed"})
+        self.assertEqual(result["artifacts"][0]["locations"], [{"path": runtime}])
+        self.assertEqual(result["artifactRelationships"], [{"parent": "runtime", "child": "rf"}])
+        self.assertEqual(len(document["artifacts"]), 6)
+        self.assertEqual(len(document["artifacts"][1]["locations"]), 2)
+
+    def test_shared_copyright_does_not_make_build_os_an_installed_package(self):
+        for primary, supporting, expected_build in (
+            ("/usr/share/sovereign-stack/nginx/build-os/var/lib/dpkg/status",
+             "/usr/share/doc/libc6/copyright", True),
+            ("/var/lib/dpkg/status",
+             "/usr/share/sovereign-stack/nginx/build-os/doc/libc6/copyright", False),
+        ):
+            document = {"artifacts": [{"id": "libc", "locations": [
+                {"path": primary, "annotations": {"evidence": "primary"}},
+                {"path": supporting, "annotations": {"evidence": "supporting"}},
+            ]}]}
+            for build in (False, True):
+                self.assertEqual(len(partitioner.partition(document, build)["artifacts"]),
+                                 int(build == expected_build))
+
+
+class PolicyTests(unittest.TestCase):
+    def test_severity_fix_and_ignored_boundaries(self):
+        for severity in ("Critical", "High", "Medium", "Low", "Negligible", "Unknown"):
+            for state in ("fixed", "not-fixed", "wont-fix", "unknown", ""):
+                for ignored in (False, True):
+                    with self.subTest(severity=severity, state=state, ignored=ignored):
+                        match = {"vulnerability": {"severity": severity,
+                                 "fix": {"state": state, "versions": ["2.0"] if state == "fixed" else []}}}
+                        report = {"matches": [] if ignored else [match],
+                                  "ignoredMatches": [match] if ignored else []}
+                        expected = severity in ("High", "Critical") and state == "fixed"
+                        result = policy.evaluate(report, 0)
+                        self.assertEqual(result["blockingMatches"], int(expected))
+                        self.assertEqual(result["passed"], not expected)
+                        self.assertEqual(result["matches"] + result["ignoredMatches"], 1)
+                        self.assertFalse(policy.evaluate(report, 2)["passed"])
+
+    def test_malformed_fix_cannot_be_treated_as_unfixed(self):
+        for fix in ({}, {"state": "fixed", "versions": []},
+                    {"state": "fixed", "versions": [None]}):
+            with self.assertRaises((ValueError, KeyError)):
+                policy.evaluate({"matches": [{"vulnerability": {"severity": "High", "fix": fix}}]}, 0)
 
 
 class LicenseTests(unittest.TestCase):
@@ -312,27 +384,40 @@ elif name=='grype':
     mode=os.environ.get('TEST_GRYPE','clean')
     if mode=='malformed': print('{}')
     else:
-        print(json.dumps({'matches': [{'vulnerability':{'severity':'Unknown','fix':{'state':'not-fixed'}}}] if mode=='match' else [],
-                          'ignoredMatches': [{'reason':'ignored'}] if mode=='ignored' else []}))
+        match={'vulnerability':{'severity':'High' if mode in ('block','ignored') else 'Unknown',
+               'fix':{'state':'fixed' if mode in ('block','ignored') else 'not-fixed',
+                      'versions':['2.0'] if mode in ('block','ignored') else []}}}
+        if mode.startswith('invalid-severity'): match['vulnerability']['severity']='HIGH'
+        if mode.startswith('invalid-state'): match['vulnerability']['fix']['state']='invalid'
+        ignored=mode=='ignored' or mode.endswith('-ignored')
+        present=mode in ('match','block','ignored') or mode.startswith('invalid-')
+        print(json.dumps({'matches': [match] if present and not ignored else [],
+                          'ignoredMatches': [match] if present and ignored else []}))
     sys.exit(2 if mode=='database-failure' else 0)
 """
 
 
 class PipelineTests(unittest.TestCase):
-    def test_gate_all_matches_errors_and_retention(self):
+    def test_gate_blockers_errors_and_all_finding_retention(self):
         for mode in (
             "clean",
             "match",
+            "block",
             "ignored",
             "database-failure",
             "malformed",
+            "invalid-severity",
+            "invalid-state",
+            "invalid-severity-ignored",
+            "invalid-state-ignored",
             "no-source",
         ):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "scripts").mkdir()
                 (root / ".tools/bin").mkdir(parents=True)
-                for script in ("evidence.sh", "license-report.py", "scan-sbom.sh"):
+                for script in ("evidence.sh", "license-report.py", "scan-sbom.sh",
+                               "vulnerability_policy.py", "partition-sbom.py"):
                     shutil.copy(ROOT / "scripts" / script, root / "scripts" / script)
                 for name in ("syft", "grype", "docker"):
                     path = root / ".tools/bin" / name
@@ -366,9 +451,9 @@ class PipelineTests(unittest.TestCase):
                     text=True,
                     check=False,
                 )
-                passed = mode in {"clean", "no-source"}
+                passed = mode in {"clean", "no-source", "match"}
                 self.assertEqual(result.returncode, 0 if passed else 1, result.stderr)
-                prefixes = [root / "out"]
+                prefixes = [root / "out", root / "out/build-provenance"]
                 if mode == "no-source":
                     self.assertFalse((root / "out/source").exists())
                 else:
@@ -380,6 +465,8 @@ class PipelineTests(unittest.TestCase):
                 for prefix in prefixes:
                     self.assertTrue((prefix / "THIRD_PARTY_NOTICES").exists())
                     self.assertTrue((prefix / "grype.json").exists())
+                    if mode == "match":
+                        self.assertEqual(len(json.loads((prefix / "grype.json").read_text())["matches"]), 1)
                     self.assertEqual(
                         json.loads((prefix / "scan-status.json").read_text())["passed"],
                         passed,

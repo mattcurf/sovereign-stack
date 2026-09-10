@@ -27,11 +27,11 @@ def rescan(archive_path, inventory, output, scanner):
         # Validate every required input before starting scanners.
         inputs = []
         for name in COMPONENTS + tuple(name + '-builder' for name in COMPONENTS) + ('tools',):
-            scopes = ('source',) if name in COMPONENTS else ('runtime', 'source')
+            scopes = ('source', 'build-provenance') if name in COMPONENTS else ('runtime', 'source', 'build-provenance')
             if name == 'tools':
                 scopes = ('runtime',)
             for scope in scopes:
-                path = f'evidence/{name}/' + ('source/' if scope == 'source' else '') + 'sbom.syft.json'
+                path = f'evidence/{name}/' + ('' if scope == 'runtime' else scope + '/') + 'sbom.syft.json'
                 data = read_regular(archive, path)
                 parsed = json.loads(data)
                 if not isinstance(parsed, dict) or not isinstance(parsed.get('artifacts'), list):

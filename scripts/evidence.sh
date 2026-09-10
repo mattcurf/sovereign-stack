@@ -32,11 +32,15 @@ ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["Id"])' 
 # Freeze a mutable local tag to its content-addressed config ID for both operations.
 syft scan "docker:$ID" --config "$TMP/syft.yaml" --scope squashed \
   --select-catalogers '+rust-cargo-lock-cataloger' \
-  -o "syft-json=$OUT/sbom.syft.json" -o "spdx-json=$OUT/sbom.spdx.json" \
-  -o "cyclonedx-json=$OUT/sbom.cyclonedx.json" 2> "$OUT/syft.log"
+  -o "syft-json=$OUT/sbom.complete.syft.json" 2> "$OUT/syft.log"
+python3 "$ROOT/scripts/partition-sbom.py" "$OUT"
 CID=$(docker create --entrypoint /bin/true "$ID")
 docker export "$CID" --output "$TMP/image.tar"
-python3 "$ROOT/scripts/license-report.py" "$OUT/sbom.syft.json" "$OUT" --image-tar "$TMP/image.tar"
+for TARGET in "$OUT" "$OUT/build-provenance"; do
+  syft convert "$TARGET/sbom.syft.json" \
+    -o "spdx-json=$TARGET/sbom.spdx.json" -o "cyclonedx-json=$TARGET/sbom.cyclonedx.json"
+  python3 "$ROOT/scripts/license-report.py" "$TARGET/sbom.syft.json" "$TARGET" --image-tar "$TMP/image.tar"
+done
 if [[ -n $SOURCE ]]; then
 mkdir "$OUT/source"
 # Syft requires source-relative glob patterns, never an absolute output path.
@@ -70,7 +74,7 @@ PY
 fi
 # Generate notices before Grype: failures must retain all already collected evidence.
 RESULT=0
-TARGETS=("$OUT")
+TARGETS=("$OUT" "$OUT/build-provenance")
 if [[ -n $SOURCE ]]; then TARGETS+=("$OUT/source"); fi
 for TARGET in "${TARGETS[@]}"; do
   bash "$ROOT/scripts/scan-sbom.sh" "$TARGET/sbom.syft.json" "$TARGET" || RESULT=1

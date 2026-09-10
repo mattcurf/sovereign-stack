@@ -5,10 +5,12 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 spec = importlib.util.spec_from_file_location('release', ROOT / 'scripts/validate-release.py')
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
@@ -47,9 +49,10 @@ class ReleaseTests(unittest.TestCase):
                     'CALLS': str(self.calls), 'IDS': json.dumps(self.ids)}
         self.write('build.json', self.build)
         for name in (*release.COMPONENTS, *(n + '-builder' for n in release.COMPONENTS), 'tools'):
-            for scope in ('', 'source') if name != 'tools' else ('',):
+            for scope in ('', 'source', 'build-provenance') if name != 'tools' else ('',):
                 self.write(f'{name}/{scope}/scan-status.json',
-                           {'passed': True, 'scannerExitCode': 0, 'matches': 0, 'ignoredMatches': 0})
+                           {'passed': True, 'scannerExitCode': 0, 'matches': 0, 'ignoredMatches': 0,
+                            'blockingMatches': 0, 'policy': 'fixable-high-critical-v1'})
                 self.write(f'{name}/{scope}/grype.json', {'matches': [], 'ignoredMatches': []})
         for name in release.COMPONENTS:
             image = self.ids[f'sovereign-stack/{name}:local']
@@ -60,7 +63,7 @@ class ReleaseTests(unittest.TestCase):
                        'versionInfo': image[7:], 'checksums': [{'algorithm': 'SHA256', 'checksumValue': 'f' * 64}]}]})
         for name in ('docker', 'gh', 'cosign'):
             self.executable(self.root / '.tools/bin' / name, MOCK)
-        for name in ('publish.sh', 'nightly.sh', 'validate-release.py'):
+        for name in ('publish.sh', 'nightly.sh', 'validate-release.py', 'vulnerability_policy.py'):
             shutil.copy(ROOT / 'scripts' / name, self.root / 'scripts')
 
     def write(self, path, value):
@@ -111,6 +114,34 @@ class ReleaseTests(unittest.TestCase):
     def test_missing_tool_gate_cannot_publish(self):
         (self.evidence / 'tools/scan-status.json').unlink()
         self.publish_blocked()
+
+    def test_nonblocking_findings_accepted_but_forged_pass_and_missing_provenance_rejected(self):
+        report = {'matches': [{'vulnerability': {'severity': 'Critical',
+                  'fix': {'state': 'not-fixed', 'versions': []}}}], 'ignoredMatches': []}
+        self.write('nginx/grype.json', report)
+        self.write('nginx/scan-status.json', {'passed': True, 'scannerExitCode': 0,
+                   'matches': 1, 'ignoredMatches': 0, 'blockingMatches': 0,
+                   'policy': 'fixable-high-critical-v1'})
+        release.validate(self.evidence, self.env, self.ids.__getitem__)
+        report['matches'][0]['vulnerability']['fix'] = {'state': 'fixed', 'versions': ['2.0']}
+        self.write('nginx/grype.json', report)
+        self.publish_blocked()
+        (self.evidence / 'python/build-provenance/scan-status.json').unlink()
+        with self.assertRaises(FileNotFoundError):
+            # Restore the nginx gate so this specifically exercises missing provenance.
+            self.write('nginx/grype.json', {'matches': [], 'ignoredMatches': []})
+            shutil.copy(self.evidence / 'rust/scan-status.json', self.evidence / 'nginx/scan-status.json')
+            release.validate(self.evidence, self.env, self.ids.__getitem__)
+
+    def test_invalid_severity_or_fix_state_cannot_publish(self):
+        for severity, state in (('HIGH', 'fixed'), ('High', 'invalid')):
+            for ignored in (False, True):
+                match = {'vulnerability': {'severity': severity,
+                         'fix': {'state': state, 'versions': ['2.0']}}}
+                self.write('nginx/grype.json', {'matches': [] if ignored else [match],
+                           'ignoredMatches': [match] if ignored else []})
+                with self.assertRaisesRegex(ValueError, 'unsupported'):
+                    release.validate(self.evidence, self.env, self.ids.__getitem__)
 
     def test_nightly_authenticates_before_verification_and_fails_closed(self):
         self.executable(self.root / 'deploy/verify-images.sh', '#!/bin/bash\necho "[\\"verify-images\\"]" >> "$CALLS"\n')
