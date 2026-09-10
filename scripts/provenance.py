@@ -41,6 +41,12 @@ def repository_materials(root, repo, commit):
                 data.decode("utf-8", errors="replace"),
             )
         )
+        if path.name == "Dockerfile":
+            for checksum, url in re.findall(
+                r"^ADD --checksum=sha256:([0-9a-f]{64}) (https://\S+) ",
+                data.decode("utf-8"), re.MULTILINE,
+            ):
+                records.append({"uri": url, "digest": {"sha256": checksum}})
     for image in sorted(images):
         records.append(
             {"uri": f"oci://{image}", "digest": {"sha256": image.split("@sha256:")[1]}}

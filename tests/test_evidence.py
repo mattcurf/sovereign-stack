@@ -308,6 +308,7 @@ class ProvenanceTests(unittest.TestCase):
             root = Path(tmp)
             (root / "rust").mkdir()
             text = "FROM registry.test/builder@sha256:" + "c" * 64
+            text += "\nADD --checksum=sha256:" + "d" * 64 + " https://registry.test/npm.tgz /tmp/npm.tgz\n"
             (root / "rust/Dockerfile").write_text(text)
             with patch.object(
                 provenance.subprocess, "check_output", return_value=b"rust/Dockerfile\0"
@@ -318,7 +319,9 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(
                 result[0]["digest"]["sha256"], hashlib.sha256(text.encode()).hexdigest()
             )
-            self.assertTrue(result[1]["uri"].startswith("oci://"))
+            self.assertEqual(result[1], {"uri": "https://registry.test/npm.tgz",
+                                         "digest": {"sha256": "d" * 64}})
+            self.assertTrue(result[2]["uri"].startswith("oci://"))
 
 
 class InstallerTests(unittest.TestCase):

@@ -1,11 +1,21 @@
 # npm-built hello world, served by nginx
 
-The digest-pinned Node **24.21.0**, npm **11.19.0** build stage runs `npm ci`
+The digest-pinned Node **24.21.0**, npm **11.19.1** build stage runs `npm ci`
 against `package-lock.json`, then `npm run build`. The build script copies the
 HTML asset using Node's standard filesystem API: no third-party frontend
 dependencies are needed for a static hello world. The empty dependency lock is
 intentional, not an unpinned `npm install`. npm's own dependencies are still
-build inputs, provided by the pinned builder digest.
+build inputs. The Node image bundles an older npm, so the Dockerfile replaces its
+complete npm tree with the official npm 11.19.1 distribution, verified by a pinned
+SHA-256 before extraction. The archive was also checked against npm's published
+SHA-512 integrity value when selecting the pin. Existing npm/npx entrypoint links
+are preserved; no custom binary is compiled and no individual dependencies are patched.
+The build asserts the installed npm version before collecting fresh evidence.
+
+This release bundles brace-expansion **5.0.9**, tar **7.5.22**, and ip-address
+**10.5.0**, fixing the previously reported npm dependency advisories. Both the
+actual builder inventory and copied build provenance must be regenerated and
+rescanned; changing a version string alone is not remediation.
 
 The final image derives from `ARG BASE_IMAGE` (default
 `sovereign-stack/base-container:local`). Debian nginx **1.26.3-3+deb13u7** and
