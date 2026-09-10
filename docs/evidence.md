@@ -162,7 +162,7 @@ release evidence as appropriate.
 
 ## Build type v1
 
-`scripts/provenance.py IMAGE_DIGEST OUTPUT_FILE [--materials FILE]` emits only the
+`scripts/provenance.py IMAGE_DIGEST OUTPUT_FILE [--materials FILE] [--build-metadata FILE]` emits only the
 SLSA v1 **predicate**, not an in-toto statement/envelope. It requires
 `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_WORKFLOW_REF`, `GITHUB_WORKFLOW_SHA`,
 `GITHUB_RUN_ID`, and `GITHUB_RUN_ATTEMPT`; `GITHUB_SERVER_URL` defaults to GitHub.
@@ -170,6 +170,16 @@ Missing CI identity fails rather than inventing it for a local run. `IMAGE_DIGES
 is `sha256:<64 hex>` or a complete immutable reference. Cosign supplies the
 authoritative subject when attesting; the predicate extension repeats the digest
 for audit and must agree with that subject.
+
+The read-only build job retains these environment fields in `evidence/build.json`.
+Publishing passes that file via `--build-metadata`: a publish-only retry continues
+to identify the original build attempt rather than claiming the retry rebuilt the
+images. Before any publication, `validate-release.py` checks the originating
+repository, commits, workflow, run and attempt; every expected clean runtime,
+builder, source and tool gate; and the loaded runtime image IDs against both
+Docker inspection and Syft metadata. It also checks SPDX's source-package identity.
+Only the validated immutable image IDs are tagged/pushed. A mismatched image,
+swapped SBOM, missing report or failed scan aborts before registry writes.
 
 External parameters are `repository` (HTTPS repository URL) and `workflow`
 (GitHub workflow reference). To reproduce the procedure, check out the recorded

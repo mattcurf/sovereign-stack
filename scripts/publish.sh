@@ -11,20 +11,22 @@ if [[ ${GITHUB_EVENT_NAME:-} != push || ${GITHUB_REF:-} != refs/heads/main ||
   exit 1
 fi
 registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+docker load -i build/images.tar
+mkdir -p release
+python3 scripts/validate-release.py > release/validated-images.json
 printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 trap 'docker logout ghcr.io >/dev/null' EXIT
-docker load -i build/images.tar
 # Index the attempt before registry writes so an interrupted publication is
 # visible to nightly auditing rather than leaving silently untracked packages.
 release_tag="stack-$GITHUB_SHA-${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
 gh release create "$release_tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
   --prerelease --latest=false --title "INCOMPLETE stack publication $GITHUB_SHA" \
   --notes 'Publication in progress or interrupted. Not deployable until signed inventory and evidence are present.'
-mkdir -p release
 printf '{}\n' > release/inventory.json
 for name in base-container nginx rust python; do
   tag="$registry/$name:$GITHUB_SHA"
-  docker tag "sovereign-stack/$name:local" "$tag"
+  image_id=$(jq -er --arg name "$name" '.[$name]' release/validated-images.json)
+  docker tag "$image_id" "$tag"
   docker push "$tag"
   ref=$(docker inspect "$tag" --format '{{json .RepoDigests}}' |
     jq -er --arg prefix "$registry/$name@sha256:" '.[] | select(startswith($prefix))')
@@ -39,7 +41,8 @@ for name in base-container nginx rust python; do
   else
     jq '[."base-container" | split("@sha256:") | {uri: .[0], digest: {sha256: .[1]}}]' release/inventory.json > release/materials.json
   fi
-  python3 scripts/provenance.py "${ref##*@}" "evidence/$name/provenance.json" --materials release/materials.json
+  python3 scripts/provenance.py "${ref##*@}" "evidence/$name/provenance.json" \
+    --materials release/materials.json --build-metadata evidence/build.json
   # Default keyless signing obtains OIDC/Fulcio certificates and uploads to Rekor.
   cosign sign --yes "$ref"
   cosign attest --yes --type spdxjson --predicate "evidence/$name/sbom.spdx.json" "$ref"

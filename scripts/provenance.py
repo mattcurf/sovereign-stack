@@ -121,14 +121,17 @@ def main():
     parser.add_argument("image_digest")
     parser.add_argument("output_file", type=Path)
     parser.add_argument("--materials", type=Path)
+    parser.add_argument("--build-metadata", type=Path,
+                        help="Originating build job environment, retained across publish-only retries")
     args = parser.parse_args()
     materials = json.loads(args.materials.read_text()) if args.materials else []
+    build_env = json.loads(args.build_metadata.read_text()) if args.build_metadata else os.environ
     try:
-        result = predicate(args.image_digest, os.environ, materials)
+        result = predicate(args.image_digest, build_env, materials)
         repo = result["buildDefinition"]["externalParameters"]["repository"]
         root = Path(__file__).resolve().parent.parent
         result["buildDefinition"]["resolvedDependencies"].extend(
-            repository_materials(root, repo, os.environ["GITHUB_SHA"])
+            repository_materials(root, repo, build_env["GITHUB_SHA"])
         )
     except (ValueError, TypeError) as error:
         parser.error(str(error))

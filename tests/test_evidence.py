@@ -100,6 +100,27 @@ class LicenseTests(unittest.TestCase):
         self.assertEqual([len(p["attributions"]) for p in result["packages"]], [1, 1])
         self.assertIn("association unresolved", str(result["unresolved"]))
 
+    def test_prefixed_runtime_notices_are_captured_or_explicitly_oversized(self):
+        node = "usr/share/sovereign-stack/nginx/NODE-LICENSE"
+        rust = "usr/share/sovereign-stack/rust/RUST-COPYRIGHT.html"
+        for rust_size in (24, licenses.MAX_TEXT + 1):
+            with self.subTest(rust_size=rust_size), tempfile.TemporaryDirectory() as tmp:
+                archive = Path(tmp) / "image.tar"
+                with tarfile.open(archive, "w") as tar:
+                    for path, data in ((node, b"Node attribution"), (rust, b"R" * rust_size)):
+                        member = tarfile.TarInfo(path)
+                        member.size = len(data)
+                        tar.addfile(member, io.BytesIO(data))
+                texts, issues = licenses.archive_texts(archive)
+                self.assertEqual(texts["/" + node], "Node attribution")
+                if rust_size > licenses.MAX_TEXT:
+                    self.assertNotIn("/" + rust, texts)
+                    self.assertEqual(issues[0]["path"], "/" + rust)
+                    self.assertIn("8 MiB", issues[0]["reason"])
+                else:
+                    self.assertEqual(texts["/" + rust], "R" * rust_size)
+                    self.assertEqual(issues, [])
+
     def test_archive_links_are_resolved_inside_image_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "image.tar"

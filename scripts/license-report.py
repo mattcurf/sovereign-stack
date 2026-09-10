@@ -22,7 +22,7 @@ def normalize(path):
 def attribution_path(path):
     name = posixpath.basename(path).lower()
     return bool(
-        re.match(r"^(copyright|copying|licen[sc]e|notice|authors)([._-].*)?$", name)
+        re.search(r"(?:^|[._-])(copyright|copying|licen[sc]e|notice|authors)([._-].*)?$", name)
     ) or path.startswith("/usr/share/common-licenses/")
 
 

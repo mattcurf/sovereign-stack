@@ -23,6 +23,12 @@ jobs:
       - run: ./scripts/scan-images.sh
       - name: Export gated images
         run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          keys = ('GITHUB_REPOSITORY', 'GITHUB_SHA', 'GITHUB_WORKFLOW_REF', 'GITHUB_WORKFLOW_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT')
+          Path('evidence/build.json').write_text(json.dumps({key: os.environ[key] for key in keys}, indent=2) + '\n')
+          PY
           mkdir -p build
           docker save -o build/images.tar sovereign-stack/base-container:local sovereign-stack/nginx:local sovereign-stack/rust:local sovereign-stack/python:local
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

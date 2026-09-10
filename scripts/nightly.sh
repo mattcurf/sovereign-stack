@@ -2,11 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$PWD/.tools/bin:$PATH"
-: "${GITHUB_REPOSITORY:?}" "${GH_TOKEN:?}"
+: "${GITHUB_REPOSITORY:?}" "${GITHUB_ACTOR:?}" "${GH_TOKEN:?}"
 identity="https://github.com/$GITHUB_REPOSITORY/.github/workflows/publish.yml@refs/heads/main"
 issuer=https://token.actions.githubusercontent.com
 out="$PWD/evidence/nightly"
 mkdir -p "$out"
+# GH_TOKEN authenticates gh API calls, not Docker/Cosign's registry keychain.
+printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+trap 'docker logout ghcr.io >/dev/null' EXIT
 # Pagination is essential: checking only the newest page silently loses history.
 gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
   --jq '.[] | select(.tag_name | startswith("stack-")) | .tag_name' > "$out/releases.txt"
