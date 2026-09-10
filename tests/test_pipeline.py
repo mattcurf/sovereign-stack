@@ -40,6 +40,20 @@ class PinPolicy(unittest.TestCase):
                 if stage:
                     stages.add(stage)
 
+    def test_base_builder_inventory_precedes_generated_rootfs(self):
+        dockerfile = (ROOT / 'base-container/Dockerfile').read_text()
+        tools, output = dockerfile.split('FROM bootstrap-tools AS bootstrap\n')
+        self.assertIn('apt-get upgrade -y --no-install-recommends', tools)
+        self.assertIn('mmdebstrap=1.5.7-1+deb13u1', tools)
+        self.assertNotIn('RUN /usr/local/bin/bootstrap', tools)
+        self.assertIn('RUN /usr/local/bin/bootstrap', output)
+        self.assertIn('COPY --from=bootstrap /rootfs/ /', output)
+        bake = (ROOT / 'docker-bake.hcl').read_text()
+        builder = re.search(r'target "base-container-builder" \{([^}]+)\}', bake).group(1)
+        self.assertIn('target = "bootstrap-tools"', builder)
+        self.assertIn('base-container) stage=bootstrap-tools ;;',
+                      (ROOT / 'scripts/build-images.sh').read_text())
+
     def test_no_security_bypasses_in_workflows(self):
         for path in (ROOT / '.github/workflows').glob('*.yml'):
             text = path.read_text()

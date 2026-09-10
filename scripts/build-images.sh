@@ -10,7 +10,7 @@ for component in base-container nginx rust python; do
         --build-arg BASE_IMAGE=sovereign-stack/base-container:local \
         --tag "sovereign-stack/$component:local" "$root/$component"
     case "$component" in
-        base-container) stage=bootstrap ;;
+        base-container) stage=bootstrap-tools ;;
         nginx) stage=static ;;
         rust) stage=build ;;
         python) stage=dependencies ;;

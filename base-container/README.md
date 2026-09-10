@@ -48,8 +48,17 @@ alone cannot enforce these controls. `scripts/smoke-images.sh` exercises them.
 `/usr/share/sovereign-stack/base-container/` retains snapshot source declarations,
 runtime/bootstrap package TSVs and bootstrap copyright documents. TSVs are
 human-readable evidence, **not** a substitute for scanner package catalogs.
-`scripts/build-images.sh` also tags the full `bootstrap` stage as
+`scripts/build-images.sh` also tags the `bootstrap-tools` stage as
 `sovereign-stack/base-container-builder:local` for independent SBOMs/scans.
+This is the exact tool environment used by the following `bootstrap` stage;
+its Debian packages are upgraded from the same pinned snapshots before use.
+The generated `/rootfs` is scanned separately as the final base image, where
+its dpkg database and binaries have their normal absolute paths. Both images
+retain complete inventories and all CVE reports. No package or CVE is excluded.
+Scanning the generated filesystem nested inside the builder can also identify
+OpenSSL as a generic upstream binary, missing Debian's package revision and
+backported fixes. Debian revision **3.5.7-1~deb13u2** fixes the nine High/Critical
+OpenSSL matches observed here; see [DSA-6465-1 via Debian's tracker](https://security-tracker.debian.org/tracker/CVE-2026-63073).
 
 `SOURCE_DATE_EPOCH=1789027200` fixes the reference time (2026-09-10 08:00 UTC);
 mmdebstrap removes volatile metadata and the script clears logs/host identity.

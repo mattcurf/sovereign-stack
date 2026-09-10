@@ -39,7 +39,7 @@ target "python" {
 
 target "base-container-builder" {
   inherits = ["base-container"]
-  target = "bootstrap"
+  target = "bootstrap-tools"
   tags = ["sovereign-stack/base-container-builder:local"]
 }
 
