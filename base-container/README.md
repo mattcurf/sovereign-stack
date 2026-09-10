@@ -27,6 +27,10 @@ installed: apt verifies signed Release metadata and package hash chains. HTTP
 does not hide traffic or prevent denial of service. Only expiry checking is
 disabled for historical snapshots; signature/hash verification is **not**
 disabled. Do not introduce `trusted=yes` or `--allow-unauthenticated`.
+APT package-description translations are disabled (`Acquire::Languages "none"`)
+in the generated base and inherited by app builds. They are unnecessary for
+installation and their snapshot downloads have failed in CI; authenticated
+package indexes and package downloads remain required.
 
 ## Practical size and security tradeoff
 

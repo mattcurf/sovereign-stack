@@ -4,6 +4,7 @@ mmdebstrap --mode=root --variant=minbase --architectures=amd64 \
     --skip=chroot/mount --format=directory \
     --include=ca-certificates \
     --aptopt='Acquire::Check-Valid-Until "false"' \
+    --aptopt='Acquire::Languages "none"' \
     trixie /rootfs /etc/apt/sources.list
 printf 'app:x:65532:65532:Application:/tmp:/usr/sbin/nologin\n' >> /rootfs/etc/passwd
 printf 'app:x:65532:\n' >> /rootfs/etc/group
