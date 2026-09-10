@@ -1,0 +1,75 @@
+{{- range $name, $port := dict "nginx" 8081 "rust" 8082 "python" 8083 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ $.Release.Name }}
+        app.kubernetes.io/name: {{ $name }}
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $name }}
+          image: {{ index $.Values.images $name | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    app.kubernetes.io/name: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: http
+{{- end }}

@@ -1,0 +1,8 @@
+{
+  "name": "sovereign-stack-static",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free npm build for the nginx hello-world page",
+  "scripts": {"build": "node build.mjs"},
+  "engines": {"node": "24.21.0", "npm": "11.19.0"}
+}

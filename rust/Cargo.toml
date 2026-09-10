@@ -1,0 +1,14 @@
+[package]
+name = "sovereign-stack-rust"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+tokio = { version = "=1.53.1", features = ["rt", "net", "io-util", "time"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"

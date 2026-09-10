@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# No authentication, backing services, or repair steps are currently required.
-# Keep dependency installation in setup, not in this wake-up hook.
-printf 'Orb resume: no reconnect or repair steps required.\n'
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+export PATH="$root/.tools/bin:$PATH"
+if docker info >/dev/null 2>&1; then
+  printf 'Orb Docker daemon is ready.\n'
+else
+  # Supervised service, never a background shell process; no installs on wake.
+  amp orb service start sovereign-docker --command "$root/.agents/docker-daemon"
+fi

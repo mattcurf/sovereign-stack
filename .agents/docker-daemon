@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+# Isolated orb only. No public TCP listener, no host Docker socket in workloads.
+exec sudo env PATH="$root/.tools/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  "$root/.tools/bin/dockerd" --host=unix:///var/run/docker.sock \
+  --group="$(id -gn)" --storage-driver=vfs --iptables=false --bridge=none

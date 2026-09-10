@@ -1,1 +1,8 @@
 .amp/portals/*
+.amp/in/artifacts/
+.tools/
+build/
+evidence/
+release/
+__pycache__/
+*.pyc
