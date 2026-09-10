@@ -182,6 +182,16 @@ Component READMEs explain the implementation-specific choices and remaining gaps
   pass. `bash scripts/check-cves.sh` scans all 25 required inventories, fails on missing
   inputs and continues collecting other reports after a blocker. Default combined
   scanning remains available for publication and local use.
+- CI runs `bash scripts/check-cves.sh runtime` and `bash scripts/check-cves.sh build-tools`
+  in parallel with matrix fail-fast disabled. The runtime scope contains only the four
+  installed-software inventories. The build-tools scope contains tooling plus all
+  builder, source and retained build-provenance inventories (21 total). These scopes
+  are disjoint and together cover all 25. Both remain security gates; no finding is
+  waived by moving it into the build-tools report.
+- Each scan writes `evidence/cve-SCOPE.md`, also shown in the GitHub job summary, and
+  uploads a separate `cve-runtime-reports` or `cve-build-tools-reports` artifact.
+  Full Grype JSON retains all findings; summary tables show total, ignored and blocking
+  counts plus per-inventory status. A passing runtime check does not imply clean builders.
 - Vulnerability reports, successful scan statuses and advisory databases are not cached.
   Every CVE job performs fresh update/freshness checks; rerunning CI must not reuse an
   old green security decision. Cache availability is an optimization, not evidence.

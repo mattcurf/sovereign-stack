@@ -96,9 +96,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
   cve:
-    name: CVE Check (Fixable High & Critical)
+    name: ${{ matrix.name }}
     needs: sbom
     if: ${{ !cancelled() && (needs.sbom.result == 'success' || needs.sbom.result == 'failure') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: runtime
+            name: Runtime CVE Scan
+          - scope: build-tools
+            name: Build Tools CVE Scan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -110,12 +118,24 @@ jobs:
         with:
           name: sbom-and-licenses
           path: evidence
-      - name: Fresh database scan of all 25 required inventories
-        run: bash scripts/check-cves.sh
+      - name: Fresh database scan of selected inventories
+        env:
+          SCAN_SCOPE: ${{ matrix.scope }}
+        run: bash scripts/check-cves.sh "$SCAN_SCOPE"
+      - name: Publish scan summary
+        if: always()
+        env:
+          SCAN_SCOPE: ${{ matrix.scope }}
+        run: |
+          if [[ -f "evidence/cve-$SCAN_SCOPE.md" ]]; then
+            cat "evidence/cve-$SCAN_SCOPE.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Scan failed before a report was generated; inspect the job logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: cve-reports-and-evidence
+          name: cve-${{ matrix.scope }}-reports
           path: evidence/
           if-no-files-found: error
           retention-days: 30

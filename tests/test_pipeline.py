@@ -98,6 +98,39 @@ class Orchestration(unittest.TestCase):
         self.assertIn('evidence/python-builder/source/sbom.syft.json', calls)
         self.assertEqual((available / 'grype.json').read_text(), 'report\n')
 
+    def test_runtime_and_build_tools_are_disjoint_and_report_independently(self):
+        shutil.copy(ROOT / 'scripts/check-cves.sh', self.root / 'scripts')
+        self.script('scan-sbom.sh', '''#!/bin/bash
+echo "$1" >> scanned
+mkdir -p "$2"
+if [[ $1 == evidence/tools/* ]]; then
+  echo '{"matches":160,"ignoredMatches":0,"blockingMatches":90,"passed":false}' > "$2/scan-status.json"
+  exit 1
+fi
+echo '{"matches":5,"ignoredMatches":0,"blockingMatches":0,"passed":true}' > "$2/scan-status.json"
+''')
+        calls = {}
+        for scope, expected_exit in (('runtime', 0), ('build-tools', 1), ('all', 1)):
+            result = subprocess.run(['bash', str(self.root / 'scripts/check-cves.sh'), scope])
+            self.assertEqual(result.returncode, expected_exit)
+            calls[scope] = set((self.root / 'scanned').read_text().splitlines())
+            (self.root / 'scanned').unlink()
+            report = (self.root / f'evidence/cve-{scope}.md').read_text()
+            self.assertIn('| 5 | 0 | 0 | PASS |', report)
+            if scope == 'runtime':
+                self.assertNotIn('FAIL', report)
+                self.assertNotIn('build-provenance', report)
+            else:
+                self.assertIn('| tools | 160 | 0 | 90 | FAIL |', report)
+        self.assertEqual(calls['runtime'], {f'evidence/{name}/sbom.syft.json'
+                         for name in ('base-container', 'nginx', 'rust', 'python')})
+        self.assertEqual(len(calls['build-tools']), 21)
+        self.assertFalse(calls['runtime'] & calls['build-tools'])
+        self.assertEqual(calls['runtime'] | calls['build-tools'], calls['all'])
+        result = subprocess.run(['bash', str(self.root / 'scripts/check-cves.sh'), 'typo'], capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse((self.root / 'scanned').exists())
+
     def test_cache_and_partial_evidence_guards(self):
         action = (ROOT / '.github/actions/build-images/action.yml').read_text()
         self.assertIn('cache-binary: false', action)
@@ -107,6 +140,7 @@ class Orchestration(unittest.TestCase):
         self.assertEqual(len(set(scopes)), 8)
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn("!cancelled() && (needs.sbom.result == 'success' || needs.sbom.result == 'failure')", workflow)
+        self.assertIn('fail-fast: false', workflow)
 
     def test_bake_graph_uses_local_base_and_all_eight_tags(self):
         import json
