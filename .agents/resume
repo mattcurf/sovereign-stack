@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# No authentication, backing services, or repair steps are currently required.
+# Keep dependency installation in setup, not in this wake-up hook.
+printf 'Orb resume: no reconnect or repair steps required.\n'

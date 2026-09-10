@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This repository currently has no toolchain or dependencies to install.
+# Add pinned toolchain and lockfile-based dependency installation here as needed.
+printf 'Orb setup: no repository prerequisites to install.\n'
