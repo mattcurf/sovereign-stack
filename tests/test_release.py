@@ -106,6 +106,26 @@ class ReleaseTests(unittest.TestCase):
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
         self.assertTrue(all(call[:2] in (['docker', 'load'], ['docker', 'image']) for call in calls), calls)
 
+    def test_tool_override_is_recomputed_and_expiry_blocks_publication(self):
+        from unittest.mock import patch
+        from test_tool_overrides import fixture, policy
+        report, native = fixture()
+        cdx, _ = inventory_pair(True)
+        purl = 'pkg:golang/stdlib@v1.26.1'
+        cdx['components'] = [{'name': 'stdlib', 'bom-ref': purl, 'purl': purl, 'type': 'library'}]
+        self.write('tools/sbom.trivy.json', native)
+        self.write('tools/sbom.cyclonedx.json', cdx)
+        self.write('tools/trivy.json', report)
+        approved = datetime(2026, 9, 12, tzinfo=timezone.utc)
+        self.write('tools/scan-status.json', policy.evaluate(report, 0, native, approved))
+        with patch.object(release, 'evaluate', side_effect=lambda r, c, n: policy.evaluate(r, c, n, approved)):
+            self.assertEqual(release.validate(self.evidence, self.env, self.ids.__getitem__),
+                             {name: self.ids[f'sovereign-stack/{name}:local'] for name in release.COMPONENTS})
+        expired = datetime(2026, 10, 11, tzinfo=timezone.utc)
+        with patch.object(release, 'evaluate', side_effect=lambda r, c, n: policy.evaluate(r, c, n, expired)):
+            with self.assertRaisesRegex(ValueError, 'Unsuccessful release gate: tools'):
+                release.validate(self.evidence, self.env, self.ids.__getitem__)
+
     def test_clean_inputs_return_frozen_ids_and_preserve_build_attempt(self):
         self.assertEqual(release.validate(self.evidence, self.env, self.ids.__getitem__),
                          {name: self.ids[f'sovereign-stack/{name}:local'] for name in release.COMPONENTS})

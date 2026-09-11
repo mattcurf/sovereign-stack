@@ -54,6 +54,16 @@ class RecordedTests(unittest.TestCase):
             recorded.rescan(self.archive, {'nginx': 'different-digest'}, self.root / 'out', self.scanner)
         self.assertFalse((self.root / 'calls').exists())
 
+    def test_tool_identity_cannot_be_used_in_other_historical_scopes(self):
+        path = 'evidence/nginx/source/sbom.trivy.json'
+        native = json.loads(self.members[path])
+        native['sovereignStackTools'] = {'platform': 'linux/amd64', 'tools': []}
+        self.members[path] = json.dumps(native).encode()
+        self.write_archive()
+        with self.assertRaisesRegex(ValueError, 'non-tool inventory'):
+            recorded.rescan(self.archive, self.inventory, self.root / 'out', self.scanner)
+        self.assertFalse((self.root / 'calls').exists())
+
     def test_missing_or_linked_sbom_is_rejected_before_scanning(self):
         self.write_archive(link=True)
         with self.assertRaises(ValueError):

@@ -32,10 +32,13 @@ def validate(evidence, env, inspect):
             directory = evidence / name / scope
             status = read(directory / 'scan-status.json')
             report = read(directory / 'trivy.json')
+            inventory = read(directory / 'sbom.trivy.json')
+            if name != 'tools' and 'sovereignStackTools' in inventory:
+                raise ValueError('Tool override identity in a non-tool inventory')
             validate_inventory(read(directory / 'sbom.cyclonedx.json'),
-                               read(directory / 'sbom.trivy.json'), report)
+                               inventory, report)
             validate_database(read(directory / 'db-metadata.json'))
-            expected_status = evaluate(report, status['scannerExitCode'])
+            expected_status = evaluate(report, status['scannerExitCode'], inventory)
             if not expected_status['passed'] or status != expected_status:
                 raise ValueError(f'Unsuccessful release gate: {name}/{scope}')
     result = {}

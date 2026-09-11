@@ -24,17 +24,19 @@ import json, pathlib, sys
 mode = sys.argv[1]
 rows = [f'# CVE scan: {mode}', '',
         'All findings are retained. Only fixable High/Critical findings block; scan errors also fail.',
-        'Counts are matches, not unique CVEs. Ignored matches are reported separately.', '',
-        '| Inventory | Matches | Ignored | Blocking | Result |',
-        '| --- | ---: | ---: | ---: | --- |']
+        'Counts are matches, not unique CVEs. Approved tool exceptions remain in the raw findings.', '',
+        '| Inventory | Matches | Ignored | Original blockers | Excepted | Blocking | Result |',
+        '| --- | ---: | ---: | ---: | ---: | ---: | --- |']
 for directory in sys.argv[2:]:
     try:
         status = json.loads((pathlib.Path(directory) / 'scan-status.json').read_text())
-        values = [status.get(key, '—') for key in ('matches', 'ignoredMatches', 'blockingMatches')]
+        values = [status.get('matches', '—'), status.get('ignoredMatches', '—'),
+                  status.get('originalBlockingMatches', status.get('blockingMatches', '—')),
+                  status.get('exceptedMatches', 0), status.get('blockingMatches', '—')]
         result = 'PASS' if status.get('passed') is True else 'FAIL'
     except (OSError, ValueError, AttributeError):
-        values, result = ['—'] * 3, 'ERROR: missing or invalid scan status'
-    rows.append(f'| {directory.removeprefix("evidence/")} | {values[0]} | {values[1]} | {values[2]} | {result} |')
+        values, result = ['—'] * 5, 'ERROR: missing or invalid scan status'
+    rows.append('| ' + ' | '.join([directory.removeprefix('evidence/'), *map(str, values), result]) + ' |')
 pathlib.Path(f'evidence/cve-{mode}.md').write_text('\n'.join(rows) + '\n')
 PY
 exit "$status"

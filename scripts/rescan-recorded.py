@@ -37,6 +37,8 @@ def rescan(archive_path, inventory, output, scanner):
                 data = read_regular(archive, path)
                 parsed = json.loads(data)
                 native = read_regular(archive, path.replace('sbom.cyclonedx.json', 'sbom.trivy.json'))
+                if name != 'tools' and 'sovereignStackTools' in json.loads(native):
+                    raise ValueError('Tool override identity in a non-tool inventory')
                 validate_inventory(parsed, json.loads(native))
                 inputs.append((name, scope, data, native))
         for name, scope, data, native in inputs:

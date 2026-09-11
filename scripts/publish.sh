@@ -43,18 +43,19 @@ for name in base-container nginx rust python; do
   fi
   python3 scripts/provenance.py "${ref##*@}" "evidence/$name/provenance.json" \
     --materials release/materials.json --build-metadata evidence/build.json
-  # Default keyless signing obtains OIDC/Fulcio certificates and uploads to Rekor.
-  cosign sign --yes "$ref"
-  cosign attest --yes --type spdxjson --predicate "evidence/$name/sbom.spdx.json" "$ref"
-  cosign attest --yes --type slsaprovenance1 --predicate "evidence/$name/provenance.json" "$ref"
+  # Explicit GitHub token flow: no ambient provider selection or browser/device fallback.
+  # Fulcio certificate checks and Rekor upload remain enabled.
+  cosign sign --yes --oidc-provider=github-actions --fulcio-auth-flow=token "$ref"
+  cosign attest --yes --oidc-provider=github-actions --fulcio-auth-flow=token --type spdxjson --predicate "evidence/$name/sbom.spdx.json" "$ref"
+  cosign attest --yes --oidc-provider=github-actions --fulcio-auth-flow=token --type slsaprovenance1 --predicate "evidence/$name/provenance.json" "$ref"
 done
 ./deploy/verify-images.sh release/inventory.json
-cosign sign-blob --yes --bundle release/inventory.sigstore.json release/inventory.json
+cosign sign-blob --yes --oidc-provider=github-actions --fulcio-auth-flow=token --bundle release/inventory.sigstore.json release/inventory.json
 cosign verify-blob --bundle release/inventory.sigstore.json \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" release/inventory.json
 cp release/inventory.json evidence/inventory.json
 tar -czf release/evidence.tar.gz evidence
-cosign sign-blob --yes --bundle release/evidence.sigstore.json release/evidence.tar.gz
+cosign sign-blob --yes --oidc-provider=github-actions --fulcio-auth-flow=token --bundle release/evidence.sigstore.json release/evidence.tar.gz
 gh release upload "$release_tag" --repo "$GITHUB_REPOSITORY" \
   release/inventory.json release/inventory.sigstore.json release/evidence.tar.gz release/evidence.sigstore.json
 gh release edit "$release_tag" --repo "$GITHUB_REPOSITORY" --prerelease=false \

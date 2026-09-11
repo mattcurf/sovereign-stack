@@ -60,6 +60,11 @@ Use GPT-6 Astra Low subagents for independently owned parallel work where useful
   including unfixed and lower-severity vulnerabilities. Keep runtime software and
   retained build-tool provenance in distinct inventories and scan both. Scanner,
   database and malformed-report errors still fail closed. Passing is not CVE freedom.
+- Permit only explicitly approved tool CVE dispositions bound to executable hash,
+  release, platform, dependency and advisory, with evidence and at most 30-day expiry.
+  Preserve raw findings and report original/excepted/remaining blocker counts.
+  Recompute dispositions and expiry at publication and historical rescan time;
+  unknown applicability is not an automatic exception.
 - Use official checksum-verified Trivy 0.74.0, not custom binaries; retain native
   whole-image/scope JSON, SPDX, and Trivy-generated CycloneDX. Scan all 25 inventories
   with `trivy sbom` on their CycloneDX; preserve separate source and build provenance.

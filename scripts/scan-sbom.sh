@@ -40,15 +40,15 @@ status = {'policy': POLICY, 'scannerExitCode': int(sys.argv[2]), 'passed': False
 try:
     report = json.loads((out / 'trivy.json').read_text())
     sbom_path = pathlib.Path(sys.argv[5])
-    validate_inventory(json.loads(sbom_path.read_text()),
-                       json.loads((sbom_path.parent / 'sbom.trivy.json').read_text()), report)
+    inventory = json.loads((sbom_path.parent / 'sbom.trivy.json').read_text())
+    validate_inventory(json.loads(sbom_path.read_text()), inventory, report)
     db = pathlib.Path(sys.argv[4]) / 'db'
     metadata = json.loads((db / 'metadata.json').read_text())
     with (db / 'trivy.db').open('rb') as stream:
         metadata['sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
     (out / 'db-metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
     validate_database(metadata)
-    status = evaluate(report, status['scannerExitCode'])
+    status = evaluate(report, status['scannerExitCode'], inventory)
 except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
     status['error'] = str(error)
 (out / 'scan-status.json').write_text(json.dumps(status, indent=2) + '\n')

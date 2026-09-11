@@ -130,12 +130,12 @@ echo '{"matches":5,"ignoredMatches":0,"blockingMatches":0,"passed":true}' > "$2/
             calls[scope] = set((self.root / 'scanned').read_text().splitlines())
             (self.root / 'scanned').unlink()
             report = (self.root / f'evidence/cve-{scope}.md').read_text()
-            self.assertIn('| 5 | 0 | 0 | PASS |', report)
+            self.assertIn('| 5 | 0 | 0 | 0 | 0 | PASS |', report)
             if scope == 'runtime':
                 self.assertNotIn('FAIL', report)
                 self.assertNotIn('build-provenance', report)
             else:
-                self.assertIn('| tools | 160 | 0 | 90 | FAIL |', report)
+                self.assertIn('| tools | 160 | 0 | 90 | 0 | 90 | FAIL |', report)
         self.assertEqual(calls['runtime'], {f'evidence/{name}/sbom.cyclonedx.json'
                          for name in ('base-container', 'nginx', 'rust', 'python')})
         self.assertEqual(len(calls['build-tools']), 21)

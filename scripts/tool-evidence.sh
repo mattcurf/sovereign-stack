@@ -11,6 +11,18 @@ printf 'disable-telemetry: true\nskip-version-check: true\n' > "$out/inventory-p
 trivy rootfs "$root/.tools/bin" --config "$out/inventory-policy.yaml" --ignorefile /dev/null \
   --cache-backend memory --scanners license --list-all-pkgs --format json \
   --output "$out/sbom.trivy.json" 2> "$out/inventory.log"
+python3 - "$root" "$out/sbom.trivy.json" <<'PY'
+import hashlib, json, pathlib, sys
+root, output = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+lock = json.loads((root / 'tools/lock.json').read_text())
+for tool in lock['tools']:
+    binary = root / '.tools/bin' / tool['name']
+    if binary.is_symlink() or hashlib.sha256(binary.read_bytes()).hexdigest() != tool['binary_sha256']:
+        raise SystemExit(f'Tool evidence does not match reviewed binary: {tool["name"]}')
+inventory = json.loads(output.read_text())
+inventory['sovereignStackTools'] = lock
+output.write_text(json.dumps(inventory, indent=2) + '\n')
+PY
 for format in spdx-json cyclonedx; do
   trivy convert "$out/sbom.trivy.json" --config "$out/inventory-policy.yaml" --ignorefile /dev/null \
     --format "$format" --output "$out/sbom.${format%-json}.json"

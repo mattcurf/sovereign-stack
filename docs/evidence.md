@@ -140,12 +140,22 @@ a new consuming tool binary has been released. Lower-severity and unfixed findin
 remain visible but do not block. `trivy.json` retains **all** findings;
 no ignore-unfixed or severity filter is applied to report generation.
 `scan-status.json` records the versioned policy, total counts and `blockingMatches`.
-No ignore or VEX suppression is allowed. Release validation recomputes the gate
+No scanner ignore or VEX suppression is allowed. Approved, expiring tool-only
+dispositions in `tools/cve-overrides.json` are applied after scanning, bound to
+the recorded executable hash, release, platform and dependency version.
+`scan-status.json` retains original blockers, excepted matches and reasons, and
+remaining blockers. Release validation recomputes both the gate and expiry
 from the full report. Trivy's default distro-aware severity selection uses vendor
 severity, then fallback when needed; it does not force NVD severity. Scanner and
 database differences mean neither package counts nor CVE counts are promised to
 match another scanner. Explicit configuration and controlled scanner environment
 prevent user settings from weakening this policy.
+
+The [tool CVE applicability review](tool-cve-assessment.md) records root causes,
+per-tool dispositions and evidence gaps for the current blocking findings. Only
+the explicitly approved platform-proven exception is active; provisional
+non-applicability candidates remain blocking. Historical inventories without
+recorded tool identities cannot receive an override based on today's binaries.
 
 Each scan validates database metadata: maximum age is 120 hours, timestamps more
 than ten minutes in the future are rejected, and `NextUpdate` must be valid and not overdue after refresh. Trivy
