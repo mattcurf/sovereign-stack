@@ -99,18 +99,18 @@ class Orchestration(unittest.TestCase):
 
     def test_cve_job_requires_every_inventory_and_continues_after_failure(self):
         shutil.copy(ROOT / 'scripts/check-cves.sh', self.root / 'scripts')
-        self.script('scan-sbom.sh', '#!/bin/bash\necho "$1" >> scanned\n[[ -f $1 ]] || exit 1\necho report > "$2/grype.json"\n')
+        self.script('scan-sbom.sh', '#!/bin/bash\necho "$1" >> scanned\n[[ -f $1 ]] || exit 1\necho report > "$2/trivy.json"\n')
         available = self.root / 'evidence/python-builder/source'
         available.mkdir(parents=True)
-        (available / 'sbom.syft.json').write_text('{}')
+        (available / 'sbom.cyclonedx.json').write_text('{}')
         result = subprocess.run(['bash', str(self.root / 'scripts/check-cves.sh')])
         calls = (self.root / 'scanned').read_text().splitlines()
         self.assertEqual(result.returncode, 1)
         self.assertEqual(len(calls), 25)
         self.assertEqual(len(set(calls)), 25)
-        self.assertIn('evidence/tools/sbom.syft.json', calls)
-        self.assertIn('evidence/python-builder/source/sbom.syft.json', calls)
-        self.assertEqual((available / 'grype.json').read_text(), 'report\n')
+        self.assertIn('evidence/tools/sbom.cyclonedx.json', calls)
+        self.assertIn('evidence/python-builder/source/sbom.cyclonedx.json', calls)
+        self.assertEqual((available / 'trivy.json').read_text(), 'report\n')
 
     def test_runtime_and_build_tools_are_disjoint_and_report_independently(self):
         shutil.copy(ROOT / 'scripts/check-cves.sh', self.root / 'scripts')
@@ -136,7 +136,7 @@ echo '{"matches":5,"ignoredMatches":0,"blockingMatches":0,"passed":true}' > "$2/
                 self.assertNotIn('build-provenance', report)
             else:
                 self.assertIn('| tools | 160 | 0 | 90 | FAIL |', report)
-        self.assertEqual(calls['runtime'], {f'evidence/{name}/sbom.syft.json'
+        self.assertEqual(calls['runtime'], {f'evidence/{name}/sbom.cyclonedx.json'
                          for name in ('base-container', 'nginx', 'rust', 'python')})
         self.assertEqual(len(calls['build-tools']), 21)
         self.assertFalse(calls['runtime'] & calls['build-tools'])

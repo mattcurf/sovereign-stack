@@ -24,11 +24,15 @@ is absent. Corrupt cached bytes fail closed; a modified binary can be restored
 from a verified cache. Only explicitly named regular archive members are read;
 archives are not extracted into the host filesystem. Docker Engine's eight
 binaries reuse one content-addressed archive. Existing unrelated Docker plugin
-files are not overwritten.
+files are not overwritten. Migration retires only recognized old pinned scanner
+binaries after verifying their identity; unrelated or modified files are not
+silently removed. The same reviewed lockfile governs source setup, installer and
+updater; neither CI nor installation runs the updater automatically.
 
 Pins were resolved from the actual stable releases on 2026-09-10: Cosign 3.1.3,
-Syft 1.51.1, Grype 0.118.0, Helm 4.3.0, actionlint 1.7.12, buildx 0.37.0,
-Compose 5.5.1, and Docker Engine 29.8.0. The first seven downloaded artifacts were
+Trivy 0.74.0, Helm 4.3.0, actionlint 1.7.12, buildx 0.37.0,
+Compose 5.5.1, and Docker Engine 29.8.0: 14 pinned binaries in total.
+Trivy is the official upstream binary, not a custom build. The first six artifacts were
 checked against their release checksum assets (Helm uses get.helm.sh). Binary
 hashes were then computed from those verified archives. This is checksum
 verification, **not verification of upstream release signatures**: initial trust
@@ -49,7 +53,7 @@ Maintainers can run `python3 tools/refresh-lock.py` (requires authenticated `gh`
 to regenerate pins. Review every version/URL/hash change and rerun cold and warm
 installation tests. This updater is **not** called by the installer or CI.
 
-## Independent collection and strict scanning
+## Independent collection and fail-closed scanning
 
 ```sh
 scripts/evidence.sh docker:sovereign-stack/rust:local evidence/rust
@@ -57,8 +61,9 @@ scripts/evidence.sh docker:sovereign-stack/rust:local evidence/rust
 scripts/evidence.sh ghcr.io/OWNER/IMAGE@sha256:DIGEST evidence/published
 # Historical images: do not incorrectly attach today's source checkout.
 SOURCE_DIR='' scripts/evidence.sh ghcr.io/OWNER/IMAGE@sha256:DIGEST evidence/historical
-# Rescan an original Syft document obtained from a verified signed evidence archive.
-scripts/scan-sbom.sh original/sbom.syft.json rescans/original
+# Rescan Trivy CycloneDX obtained from a verified signed evidence archive.
+# Keep its corresponding sbom.trivy.json alongside it for package-preservation checks.
+scripts/scan-sbom.sh original/sbom.cyclonedx.json rescans/original
 ```
 
 `OUTPUT_DIR` for `evidence.sh` must be empty; existing reports are never mixed
@@ -74,26 +79,27 @@ Each output contains:
 | File | Meaning |
 | --- | --- |
 | `image-inspect.json` | Docker image/config identity and original references |
-| `sbom.syft.json` | Native Syft inventory and rich package metadata |
+| `sbom.trivy.json` | Scope-specific native Trivy inventory and package metadata |
 | `sbom.spdx.json` | SPDX JSON, the predicate file for the image SBOM attestation |
-| `sbom.cyclonedx.json` | CycloneDX JSON representation |
-| `sbom.complete.syft.json` | Unmodified whole-image scan, including retained build evidence |
+| `sbom.cyclonedx.json` | Trivy-generated CycloneDX JSON used by `trivy sbom` |
+| `sbom.complete.trivy.json` | Raw native whole-image inventory, including retained build evidence |
 | `build-provenance/` | Separate SBOMs, licenses and scan reports for retained build-tool metadata; not installed runtime software |
 | `licenses.json`, `licenses.csv` | Per-package identifiers, discovered texts, attribution references, unresolved reasons |
 | `THIRD_PARTY_NOTICES` | Package index, deduplicated discovered text with locations, unresolved section |
 | `unresolved.json` | Machine-readable evidence gaps; not a fabricated license conclusion |
 | `build-metadata.json` | Original retained image build locks, Cargo metadata/manifests, package TSVs and tool-version files with hashes |
-| `grype.json`, `grype.log` | Scanner result and diagnostics, including database failures |
-| `grype-policy.yaml`, `scan-status.json` | Exact policy and fail-closed result |
-| `source/` | Separate repository inventory, same SBOM/license/Grype outputs, plus `lockfiles.json` with source lock contents and hashes |
+| `trivy.json`, `trivy.log` | Full scanner result and diagnostics, including database failures |
+| `trivy-policy.yaml`, `scan-status.json` | Exact policy and fail-closed result |
+| `db-metadata.json` | Retained vulnerability database metadata for freshness validation and audit |
+| `source/` | Separate repository inventory, same SBOM/license/Trivy outputs, plus `lockfiles.json` with source lock contents and hashes |
 
-The initial image scan uses Syft's installed-software/image catalogers over the final
-merged filesystem (`squashed`), **not** only the application binary. Debian dpkg
+The initial image collection uses native Trivy over the final merged filesystem,
+**not** only the application binary. Debian dpkg
 metadata and copyrights remain in the images. `partition-sbom.py` separates only
 the repository's reserved build-evidence directories: nginx's retained npm/build-OS
 metadata, base bootstrap documentation, and Python build documentation. Packages
 discovered there belong to `build-provenance/`, not the top-level runtime SBOM.
-Both inventories are scanned and retained; the original whole-image Syft document
+Both inventories are scanned and retained; the original whole-image Trivy document
 is also retained for audit. Primary package records determine membership when
 available; a shared supporting copyright file does not prove runtime installation.
 A package with primary records in both scopes appears in both inventories with
@@ -102,11 +108,14 @@ advisory, or severity controls this partition.
 License text collection still preserves all image attribution texts, including
 unassociated build notices, in addition to the per-inventory package indexes.
 
-The Rust Cargo.lock cataloger is
-explicitly added so retained static-link dependency metadata is not silently
-ignored. These declared dependencies are a conservative candidate set, not proof
-that every target-specific or build-only crate was linked. Source inventory uses
-directory catalogers (including lockfile declarations), independently of runtime.
+Retained Rust Cargo.lock dependencies are kept as conservative runtime candidates
+so static-link dependency metadata is not silently ignored. These declarations
+are not proof that every target-specific or build-only crate was linked. Source
+inventory uses Trivy filesystem analysis (including lockfile declarations),
+independently of runtime. An explicit pip analyzer pattern covers this repository's
+`requirements.lock` filename. Installed tool binaries use `trivy rootfs`, not `fs`:
+source mode omits compiled Go executables. The separate tool lockfile preserves
+all 14 executable hashes, including binaries for which Trivy has no package analyzer.
 Tool caches, Git internals, evidence/build/release/.amp/target directories, and
 the current output directory are excluded from source scanning to avoid
 recataloging generated output. Compiler and build-stage OS
@@ -114,47 +123,73 @@ packages require scanning the separately tagged **builder images** as well:
 source lockfiles alone cannot reveal all packages installed in a multi-stage
 builder. The parent build/scan pipeline collects runtime and builder inventories.
 
-All runtime, retained build-provenance, builder, source and tooling inventories use
-the same `scan-sbom.sh` policy: only **High or Critical** findings whose fix state
-is `fixed` with a nonempty fixed-version list block CI/publication/nightly audits.
+All 25 runtime, retained build-provenance, builder, source and tooling inventories
+use `trivy sbom` on their own Trivy-generated CycloneDX documents and the same
+`scan-sbom.sh` policy: only **HIGH or CRITICAL** findings with a nonempty
+`FixedVersion` block CI/publication/nightly audits.
+The shared inventory validator requires Trivy root metadata and valid package
+identifiers. CycloneDX library PURLs must exactly match the retained native
+inventory and the rescan's package list. Debian OS release and source-package
+name/version/epoch/release must also survive conversion and rescanning: retaining
+binary package names alone is insufficient for Debian advisory lookups.
+Missing or silently skipped packages fail
+closed, while genuinely empty provenance scopes remain valid. Keep both native
+and CycloneDX inputs together; a producer label alone does not prove completeness.
 This means an advisory records an available dependency fix, not necessarily that
 a new consuming tool binary has been released. Lower-severity and unfixed findings
-remain visible but do not block. `grype.json` retains **all** actual and ignored
-matches; no `only-fixed` or severity filter is applied to report generation.
+remain visible but do not block. `trivy.json` retains **all** findings;
+no ignore-unfixed or severity filter is applied to report generation.
 `scan-status.json` records the versioned policy, total counts and `blockingMatches`.
-Ignored matches meeting the blocking criteria also block; no ignore or VEX rule
-can bypass this predicate. Release validation recomputes it from the full report.
-User `GRYPE_*` settings are cleared and
-an explicit configuration prevents a home-directory config from weakening this
-policy. Database hash validation and age validation are enabled; maximum build
-age is 120 hours; update checks are required on every scan. Failed download,
-failed update check, missing/corrupt database, stale database, malformed report,
-or scanner nonzero status fails the gate. Fresh advisory databases are deliberately
-mutable inputs; archive the report's database metadata for audit, not a stale DB
-to make builds pass. Every collected scope is scanned even if another scope fails.
-Notices/SBOMs are written **before** Grype, and failed runs retain evidence.
+No ignore or VEX suppression is allowed. Release validation recomputes the gate
+from the full report. Trivy's default distro-aware severity selection uses vendor
+severity, then fallback when needed; it does not force NVD severity. Scanner and
+database differences mean neither package counts nor CVE counts are promised to
+match another scanner. Explicit configuration and controlled scanner environment
+prevent user settings from weakening this policy.
+
+Each scan validates database metadata: maximum age is 120 hours, timestamps more
+than ten minutes in the future are rejected, and `NextUpdate` must be valid and not overdue after refresh. Trivy
+refreshes its OCI-distributed database when due according to its metadata; a fresh
+database need not be downloaded again for every inventory. Failed refresh,
+missing/corrupt or stale database, invalid metadata, malformed report, or scanner
+nonzero status fails the gate. Preserve `db-metadata.json` with the report for audit.
+No security result or vulnerability database is stored in GitHub Actions caches.
+Fresh advisory data is deliberately mutable, not frozen to manufacture a pass.
+Every collected scope is scanned even if another scope fails. Notices/SBOMs are
+written **before** vulnerability scanning, and failed runs retain evidence.
 
 For nightly historical audits, verify the signed inventory/archive and its
 digest binding before using it; extract only expected regular members, not
-arbitrary archive paths. Scan the original retained build-provenance, builder and source Syft
-documents with `scan-sbom.sh`; separately rescan each immutable published image
+arbitrary archive paths. Scan the original retained build-provenance, builder and
+source Trivy CycloneDX documents with `scan-sbom.sh`; separately rescan each immutable published image
 with `SOURCE_DIR=''`. Never label the current checkout as a historical build's
 source. Signed inventory enumeration must fail on missing or invalid evidence,
 not silently skip an image. A passing gate means only **no fixable High/Critical
 matches in the examined inventories and database at that time**. It does not mean
 zero CVEs, absence of unfixed severe vulnerabilities, or absence of vulnerabilities.
 
+No historical release has been published yet. Signed archives going forward carry
+Trivy-generated CycloneDX. Legacy Syft-native archives are unsupported and fail
+closed: any future import requires an explicit reviewed migration, preserving the
+original signed bytes and recording newly generated evidence separately. Do not
+rename native JSON or assume arbitrary third-party CycloneDX is equivalent: Trivy
+relies on its own CycloneDX properties for accurate rescanning.
+
 ## Attribution and license review
 
-`scripts/license-report.py SYFT_JSON OUTPUT_DIR [--image-tar DOCKER_EXPORT_TAR]`
-uses native Syft license strings/text/locations and reads discovered license,
+`scripts/license-report.py TRIVY_JSON OUTPUT_DIR [--image-tar DOCKER_EXPORT_TAR | --source-dir SOURCE]`
+uses native Trivy package/license metadata and reads discovered license,
 copyright, COPYING, NOTICE and AUTHORS files from the exported image. It also
 includes `/usr/share/common-licenses`. Debian documentation symlinks are resolved
 inside the archive, never followed on the host. Oversized (>8 MiB), undecodable,
 cyclic, or missing text is explicitly unresolved rather than silently omitted.
 Text is indexed by its SHA-256 with all locations/package references; exact
 Debian package paths and retained Rust crate-name/version directories supply
-additional associations. Unassociated texts remain present and unresolved.
+additional associations. Python notices are associated only within the package's
+exact `.dist-info` directory, including `licenses/`. Unassociated texts remain
+present and unresolved.
+Source notice collection skips generated directories and the current evidence
+output; it reports file symlinks as unresolved rather than reading outside the tree.
 
 Rust metadata/text lives under `/usr/share/sovereign-stack/rust`, including
 Cargo.lock, Cargo.toml, cargo-metadata.json and `dependencies/NAME-VERSION/`.
@@ -200,7 +235,8 @@ to identify the original build attempt rather than claiming the retry rebuilt th
 images. Before any publication, `validate-release.py` checks the originating
 repository, commits, workflow, run and attempt; every expected clean runtime,
 builder, source and tool gate; and the loaded runtime image IDs against both
-Docker inspection and Syft metadata. It also checks SPDX's source-package identity.
+Docker inspection and Trivy metadata. It also checks Trivy's SPDX `ImageID`
+annotation and CycloneDX `aquasecurity:trivy:ImageID` property.
 Only the validated immutable image IDs are tagged/pushed. A mismatched image,
 swapped SBOM, missing report or failed scan aborts before registry writes.
 
@@ -262,9 +298,9 @@ digest, expected predicate type, and expected source/material policy.
 
 ## Authoritative references
 
-- [Syft SBOM documentation](https://oss.anchore.com/docs/) and [cataloger selection](https://oss.anchore.com/docs/sbom/generation/).
-- [Syft 1.51.1 native license model](https://github.com/anchore/syft/blob/v1.51.1/syft/format/syftjson/model/package.go): `contents` is plain JSON text, not base64.
-- [Grype configuration](https://oss.anchore.com/docs/reference/grype/configuration/): database age/hash/update requirements and suppression defaults; installed `grype config --load=false` confirms the pinned release's settings.
+- [Trivy SBOM scanning](https://trivy.dev/latest/docs/target/sbom/): Trivy-generated CycloneDX retains properties needed for accurate rescanning.
+- [Trivy vulnerability severity selection](https://trivy.dev/latest/docs/scanner/vulnerability/): vendor severity and fallback rather than forced NVD severity.
+- [Trivy database configuration](https://trivy.dev/latest/docs/configuration/db/) and [license scanning](https://trivy.dev/latest/docs/scanner/license/).
 - [SPDX 2.3 package information](https://spdx.github.io/spdx-spec/v2.3/package-information/): distinguish declared/concluded licenses, `NOASSERTION`, copyright and attribution fields.
 - [SLSA provenance specification](https://slsa.dev/spec/v1.2/provenance): v1 predicate schema, builder trust boundary and best-effort materials.
 - [Sigstore signing other artifact types](https://docs.sigstore.dev/cosign/signing/other_types/) and [verification](https://docs.sigstore.dev/cosign/verifying/verify/).

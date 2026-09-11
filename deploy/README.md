@@ -80,6 +80,14 @@ isolation, source revision approval, or a particular SLSA level. Verifying the
 base inventory entry does not by itself prove each application was built from
 that base; production provenance policy should check build materials too.
 
+The publishing pipeline uses native Trivy inventories, retaining SPDX for the
+SBOM attestation and Trivy-generated CycloneDX for vulnerability rescans. It gates
+HIGH/CRITICAL findings with nonempty `FixedVersion` and fails closed on scanner,
+database or malformed-report errors; other findings remain reported. The loader
+does not itself run Trivy or refresh this security decision. Review the signed
+release evidence and current audit results; an accepted signature is not a fresh
+vulnerability check or a license-compliance certification.
+
 **Helm preflight is not cluster admission control.** A person can bypass this
 script, call Helm directly, skip Helm schema validation, or submit another Pod.
 Schema validation checks reference shape, not cryptographic trust. The loader

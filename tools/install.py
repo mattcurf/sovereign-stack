@@ -11,8 +11,47 @@ import tempfile
 from pathlib import Path
 
 
+# Previously reviewed installer pins, retained only to identify obsolete binaries.
+RETIRED_BINARIES = {
+    "syft": "abca2def61de9952fa06d3977bb1e064818facb9badfce502b450d3d6846a91f",
+    "grype": "91705979c6ccb736b87e3250831f5e1a35f13767fd2032ffa85c55b1e6f58f90",
+}
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def retire_obsolete_binaries(bindir):
+    owned = []
+    for name, expected in RETIRED_BINARIES.items():
+        target = bindir / name
+        if not target.exists() and not target.is_symlink():
+            continue
+        try:
+            recognized = (
+                not target.is_symlink()
+                and target.is_file()
+                and digest(target) == expected
+            )
+        except OSError:
+            recognized = False
+        if not recognized:
+            raise SystemExit(
+                f"Cannot establish installer ownership of obsolete tool: {target}. "
+                "Inspect and move it out of .tools/bin manually, then rerun tools/install.sh."
+            )
+        owned.append(target)
+    # Validate every obsolete path before removing any of them.
+    for target in owned:
+        try:
+            target.unlink()
+        except OSError as error:
+            raise SystemExit(
+                f"Cannot retire obsolete tool {target}: {error}. "
+                "Check directory permissions and rerun tools/install.sh."
+            ) from error
+        print(f"Retired installer-owned {target.name}")
 
 
 def main():
@@ -22,6 +61,7 @@ def main():
     bindir, cache = root / ".tools/bin", root / ".tools/cache"
     bindir.mkdir(parents=True, exist_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
+    retire_obsolete_binaries(bindir)
     for tool in json.loads((root / "tools/lock.json").read_text())["tools"]:
         target = bindir / tool["name"]
         archive = cache / tool["sha256"]

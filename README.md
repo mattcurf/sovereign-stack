@@ -34,7 +34,8 @@ stages, not production processes. Exact runtime contents are visible in SBOMs.
 Prerequisites: Linux/amd64, Bash, Python 3, curl, tar, jq, Git, and a running Docker
 daemon. Docker access is effectively host-root access; use an isolated machine.
 GitHub CLI is needed only for release/audit operations. The locked installer
-provides Syft, Grype, Cosign, Helm, actionlint, Docker userspace, Buildx, and Compose.
+provides native Trivy 0.74.0, Cosign, Helm, actionlint, Docker userspace, Buildx,
+and Compose: 14 pinned binaries, with no custom security-tool builds.
 
 ```sh
 ./tools/install.sh
@@ -52,8 +53,11 @@ tool binaries are inventoried even when another scan fails. Do not turn a failin
 scan into success by hiding findings.
 
 Runtime SBOMs distinguish installed software from retained build-tool metadata.
-`build-provenance/` holds the latter's inventories and scans; `sbom.complete.syft.json`
-preserves the original whole-image inventory. All scopes use the same blocking policy.
+`build-provenance/` holds the latter's inventories and scans; `sbom.complete.trivy.json`
+preserves the raw native whole-image inventory. Each scope retains native Trivy,
+SPDX and Trivy-generated CycloneDX documents. `trivy sbom` scans the CycloneDX
+documents for all 25 inventories under the same blocking policy. See the
+[evidence guide](docs/evidence.md) for reports, database validation and limits.
 
 Amp orbs run `.agents/setup` to cache the pinned tools. `.agents/resume` remains
 fast and reconnects a supervised, Unix-socket-only Docker daemon without installing
@@ -94,6 +98,9 @@ networking for nested Docker builds/tests; production loaders retain isolation.
   are found. Scanner/database errors also fail closed; all CVEs remain in reports.
   Subscribe to Actions failure notifications; nightly reports are kept 90 days.
 
+No historical release has been published yet. Signed evidence archives going
+forward contain Trivy-generated CycloneDX inventories; legacy Syft-native archives
+fail closed and require explicit migration, not an assumed compatible rescan.
 Opening a PR does not publish artifacts. On first successful main publication,
 an owner may need to set GHCR package visibility/access deliberately; the workflow
 does not change registry permissions. Enable branch protection and require all six

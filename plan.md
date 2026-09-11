@@ -24,7 +24,7 @@ Use GPT-6 Astra Low subagents for independently owned parallel work where useful
 6. `deploy/helm/`: an independent Helm loader for the same apps and distinct
    ports, with equivalent verification. Clearly distinguish loader-time checks
    from cluster-wide admission enforcement and document that trust boundary.
-7. GitHub CI: build and test all images; scan with Anchore Syft/Grype; on trusted
+7. GitHub CI: build and test all images; inventory and scan with native Trivy; on trusted
    main-branch changes publish to GHCR, keylessly sign image digests using
    Sigstore Fulcio/GitHub OIDC, record signatures in Rekor, and verify them.
    Pull requests must not receive publishing or signing permissions.
@@ -35,7 +35,8 @@ Use GPT-6 Astra Low subagents for independently owned parallel work where useful
    Do not equate scanner discovery with mathematically complete provenance.
 9. Nightly CI: enumerate the published artifact inventory, verify signatures and
    attestations, and rescan immutable artifacts using fresh vulnerability data.
-   Fail visibly on new CVEs, stale/failed databases, missing evidence, or invalid
+   Fail visibly on HIGH/CRITICAL CVEs with nonempty `FixedVersion`, scanner or
+   malformed-report errors, stale/failed databases, missing evidence, or invalid
    signatures. Retain reports even on failure; document remediation/alerts.
 10. Concise but generous documentation: quick start, theory of operations,
     threat model, trust roots, least privilege, sovereign/offline mirroring,
@@ -59,6 +60,18 @@ Use GPT-6 Astra Low subagents for independently owned parallel work where useful
   including unfixed and lower-severity vulnerabilities. Keep runtime software and
   retained build-tool provenance in distinct inventories and scan both. Scanner,
   database and malformed-report errors still fail closed. Passing is not CVE freedom.
+- Use official checksum-verified Trivy 0.74.0, not custom binaries; retain native
+  whole-image/scope JSON, SPDX, and Trivy-generated CycloneDX. Scan all 25 inventories
+  with `trivy sbom` on their CycloneDX; preserve separate source and build provenance.
+  Keep notices, license JSON/CSV, unresolved evidence and build metadata. Trivy
+  license support proves neither legal compliance nor complete source provenance.
+- Use default distro-aware Trivy severity (vendor then fallback), without VEX or
+  ignore suppression. Refresh the OCI vulnerability DB when due per its metadata;
+  validate maximum age 120 hours, future timestamps and `NextUpdate`, and retain DB
+  metadata with reports. Never GitHub-cache vulnerability DBs or security results.
+- No historical release exists yet. New signed archives contain Trivy CycloneDX;
+  legacy Syft-native archives fail closed and require explicit migration. Do not
+  promise identical package or vulnerability counts across scanners.
 - Pinning alone is not proof of bit-for-bit reproducibility. Normalize build
   timestamps where supported and explain remaining sources of nondeterminism.
 - Do not claim SLSA certification or full sovereignty from using public GitHub,
@@ -99,8 +112,8 @@ Report unresolved external access or vulnerability blockers honestly.
 - Debian snapshot archive: <https://snapshot.debian.org/>
 - Sigstore verification: <https://docs.sigstore.dev/cosign/verifying/verify/>
 - Cosign: <https://github.com/sigstore/cosign>
-- Anchore Syft: <https://oss.anchore.com/docs/>
-- Grype scan configuration: <https://oss.anchore.com/docs/reference/grype/configuration/>
+- Trivy SBOM scanning: <https://trivy.dev/latest/docs/target/sbom/>
+- Trivy database configuration: <https://trivy.dev/latest/docs/configuration/db/>
 - GitHub Actions security: <https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions>
 - SLSA provenance: <https://slsa.dev/spec/v1.1/provenance>
 - Kubernetes pod security: <https://kubernetes.io/docs/concepts/security/pod-security-standards/>

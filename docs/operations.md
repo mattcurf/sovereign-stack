@@ -16,7 +16,7 @@ identity, and transparency evidence. It proves the trusted workflow signed the
 artifact—not that its code is safe or that the workflow was uncompromised.
 
 SPDX SBOM and SLSA-format provenance attestations bind inventory/build claims to
-each digest. Independent Syft scans are separate from Docker build attestations.
+each digest. Independent Trivy inventories/scans are separate from Docker build attestations.
 The provenance is **self-reported by this workflow**, not an independent hardened
 builder's guarantee and not a claim of SLSA Build Level 3.
 
@@ -40,9 +40,14 @@ put secrets in image labels, build args, SBOM fields, or attestation predicates.
 Locks are reviewed inputs, not a reason to freeze vulnerable software forever.
 Update the snapshot timestamps and matching package sets together; regenerate
 npm/Cargo/pip locks with the selected tools; resolve builder manifests by digest;
-download new tool assets and verify their upstream checksums/signatures before
+download official tool assets and verify their upstream checksums before
 recording new hashes. Run full build, smoke, evidence, and loader tests in a PR.
 Review the SBOM/license delta and preserve previous released inventories.
+The reviewed installer/updater pins native Trivy 0.74.0 among 14 binaries; it does
+not compile custom replacements or claim upstream signature verification. Retire
+only recognized old pinned scanner binaries, never arbitrary user files. See the
+[tool trust details](evidence.md#install-the-reviewed-tools). Replacing the scanner
+does not eliminate Go dependencies from the installed tooling.
 
 Inputs without floating versions:
 
@@ -63,11 +68,16 @@ differ: compare repeated rootfs/artifact hashes before asserting bit-identical b
 
 ## Vulnerability response
 
-The release gate rejects High/Critical matches with an available fixed version.
+The release gate rejects Trivy HIGH/CRITICAL findings with nonempty `FixedVersion`.
 All findings, including unfixed Critical/High findings and lower severities, remain
-in the full Grype reports. Retained build-tool provenance is inventoried separately
+in the full `trivy.json` reports. Retained build-tool provenance is inventoried separately
 from runtime software; both scopes and the actual builder/tool images are gated.
-Grype database download, validation, or freshness failures also block a release.
+Trivy scanner, malformed-report and database download, validation, or freshness
+failures also block a release. Default distro-aware severity uses vendor severity
+then fallback; there is no forced NVD severity, VEX or ignore suppression. Counts
+need not match other scanners. OCI database refresh happens when due per Trivy
+metadata. Validate age (maximum 120 hours), future timestamps and `NextUpdate`;
+retain `db-metadata.json`, `trivy.log`, `trivy-policy.yaml` and `scan-status.json`.
 This can legitimately leave the PR red when the latest tool binary embeds a
 dependency with an available fix. Preserve reports and explain the blocker; do not add a blanket
 ignore rule or `continue-on-error` to manufacture a passing build.
@@ -104,6 +114,10 @@ Historical audits verify the signed evidence archive's embedded inventory matche
 the selected inventory. They rescan the original build/source/tool SBOMs, not
 today's checkout, and independently rescan the published runtime digests. This
 also detects regressions in software used only during construction.
+No historical release has been published yet. Signed archives going forward
+retain Trivy-generated CycloneDX for `trivy sbom` rescans. Legacy Syft-native
+archives fail closed and require explicit reviewed migration; compatibility with
+historical scanner-native archives is not implied.
 
 ## Sovereignty, offline use, and source obligations
 
@@ -149,7 +163,9 @@ not copied from floating documentation examples):
 - [GitHub Actions secure use](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions)
 - [Sigstore signature verification](https://docs.sigstore.dev/cosign/verifying/verify/)
 - [Sigstore keyless signing](https://docs.sigstore.dev/cosign/signing/signing_with_containers/)
-- [Anchore Syft/Grype documentation](https://oss.anchore.com/docs/)
+- [Trivy SBOM scanning](https://trivy.dev/latest/docs/target/sbom/)
+- [Trivy vulnerability severity](https://trivy.dev/latest/docs/scanner/vulnerability/)
+- [Trivy database configuration](https://trivy.dev/latest/docs/configuration/db/)
 - [SLSA v1 provenance](https://slsa.dev/spec/v1.1/provenance)
 - [SPDX specification](https://spdx.github.io/spdx-spec/v2.3/)
 - [Kubernetes Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)
@@ -180,7 +196,8 @@ Component READMEs explain the implementation-specific choices and remaining gaps
   failures. Compression level 1 balances tar transfer size against CPU cost.
 - `scan-images.sh --collect-only` produces inventories without claiming a security
   pass. `bash scripts/check-cves.sh` scans all 25 required inventories, fails on missing
-  inputs and continues collecting other reports after a blocker. Default combined
+  inputs and continues collecting other reports after a blocker. Each is scanned
+  with `trivy sbom` on its own Trivy-generated CycloneDX document. Default combined
   scanning remains available for publication and local use.
 - CI runs `bash scripts/check-cves.sh runtime` and `bash scripts/check-cves.sh build-tools`
   in parallel with matrix fail-fast disabled. The runtime scope contains only the four
@@ -190,7 +207,7 @@ Component READMEs explain the implementation-specific choices and remaining gaps
   waived by moving it into the build-tools report.
 - Each scan writes `evidence/cve-SCOPE.md`, also shown in the GitHub job summary, and
   uploads a separate `cve-runtime-reports` or `cve-build-tools-reports` artifact.
-  Full Grype JSON retains all findings; summary tables show total, ignored and blocking
+  Full Trivy JSON retains all findings; summary tables show total and blocking
   counts plus per-inventory status. A passing runtime check does not imply clean builders.
 - Vulnerability reports, successful scan statuses and advisory databases are not cached.
   Every CVE job performs fresh update/freshness checks; rerunning CI must not reuse an

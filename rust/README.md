@@ -35,7 +35,9 @@ metadata independently. No assertion of complete license compliance or zero
 known vulnerabilities follows from retaining these files.
 
 On updates, choose the new builder digest and exact Tokio version, regenerate
-the lock with that pinned Cargo, review changes, rebuild and rerun strict scans.
+the lock with that pinned Cargo, review changes, rebuild and rerun Trivy scans
+under the shared fixable HIGH/CRITICAL policy. Retained Cargo.lock dependencies
+remain conservative runtime candidates, not proven linked components.
 Do not switch the build to unlocked Cargo or delete lock metadata to hide CVEs.
 See [base repeatability limitations](../base-container/README.md).
 

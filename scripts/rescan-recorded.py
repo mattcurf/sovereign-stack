@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import tarfile
 
+from inventory_contract import validate_inventory
+
 COMPONENTS = ('base-container', 'nginx', 'rust', 'python')
 
 
@@ -31,17 +33,18 @@ def rescan(archive_path, inventory, output, scanner):
             if name == 'tools':
                 scopes = ('runtime',)
             for scope in scopes:
-                path = f'evidence/{name}/' + ('' if scope == 'runtime' else scope + '/') + 'sbom.syft.json'
+                path = f'evidence/{name}/' + ('' if scope == 'runtime' else scope + '/') + 'sbom.cyclonedx.json'
                 data = read_regular(archive, path)
                 parsed = json.loads(data)
-                if not isinstance(parsed, dict) or not isinstance(parsed.get('artifacts'), list):
-                    raise ValueError(f'Invalid Syft inventory: {path}')
-                inputs.append((name, scope, data))
-        for name, scope, data in inputs:
+                native = read_regular(archive, path.replace('sbom.cyclonedx.json', 'sbom.trivy.json'))
+                validate_inventory(parsed, json.loads(native))
+                inputs.append((name, scope, data, native))
+        for name, scope, data, native in inputs:
             directory = output / name / scope
             directory.mkdir(parents=True, exist_ok=True)
-            sbom = directory / 'sbom.syft.json'
+            sbom = directory / 'sbom.cyclonedx.json'
             sbom.write_bytes(data)
+            (directory / 'sbom.trivy.json').write_bytes(native)
             result = subprocess.run([str(scanner), str(sbom), str(directory)])
             if result.returncode:
                 status = 1

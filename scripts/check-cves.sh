@@ -16,7 +16,7 @@ for name in base-container nginx rust python; do
 done
 status=0
 for directory in "${targets[@]}"; do
-  bash scripts/scan-sbom.sh "$directory/sbom.syft.json" "$directory" || status=1
+  bash scripts/scan-sbom.sh "$directory/sbom.cyclonedx.json" "$directory" || status=1
 done
 mkdir -p evidence
 python3 - "$mode" "${targets[@]}" <<'PY'

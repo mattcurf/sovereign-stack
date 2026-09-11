@@ -7,37 +7,49 @@ export PATH="$ROOT/.tools/bin:$PATH"
 SBOM=$(realpath -- "$1")
 mkdir -p -- "$2"
 OUT=$(realpath -- "$2")
-for variable in ${!GRYPE_@}; do unset "$variable"; done
-cat > "$OUT/grype-policy.yaml" <<'EOF'
-check-for-app-update: false
-only-fixed: false
-only-notfixed: false
-ignore: []
-exclude: []
-vex-documents: []
-db:
-  auto-update: true
-  validate-by-hash-on-start: true
-  validate-age: true
-  max-allowed-built-age: 120h
-  require-update-check: true
-  max-update-check-frequency: 0s
+for variable in ${!TRIVY_@}; do unset "$variable"; done
+cat > "$OUT/trivy-policy.yaml" <<'EOF'
+disable-telemetry: true
+skip-version-check: true
+scanners: [vuln]
+severity: [UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL]
+ignore-unfixed: false
+ignore-status: []
+vex: []
+skip-db-update: false
+show-suppressed: true
+list-all-pkgs: true
+exit-code: 0
 EOF
+# Explicit empty ignore file defeats repository-local .trivyignore files.
+printf '' > "$OUT/trivy.ignore"
+CACHE="$ROOT/.tools/trivy-cache"
 set +e
-grype "sbom:$SBOM" --config "$OUT/grype-policy.yaml" -o json \
-  > "$OUT/grype.json" 2> "$OUT/grype.log"
+trivy sbom "$SBOM" --config "$OUT/trivy-policy.yaml" --ignorefile "$OUT/trivy.ignore" \
+  --cache-dir "$CACHE" --cache-backend memory --no-progress --format json \
+  > "$OUT/trivy.json" 2> "$OUT/trivy.log"
 STATUS=$?
 set -e
-python3 - "$OUT" "$STATUS" "$ROOT/scripts" <<'PY'
-import json, pathlib, sys
+python3 - "$OUT" "$STATUS" "$ROOT/scripts" "$CACHE" "$SBOM" <<'PY'
+import hashlib, json, pathlib, sys
 sys.path.insert(0, sys.argv[3])
-from vulnerability_policy import evaluate, POLICY
+from vulnerability_policy import evaluate, validate_database, POLICY
+from inventory_contract import validate_inventory
 out = pathlib.Path(sys.argv[1])
 status = {'policy': POLICY, 'scannerExitCode': int(sys.argv[2]), 'passed': False}
 try:
-    report = json.loads((out / 'grype.json').read_text())
+    report = json.loads((out / 'trivy.json').read_text())
+    sbom_path = pathlib.Path(sys.argv[5])
+    validate_inventory(json.loads(sbom_path.read_text()),
+                       json.loads((sbom_path.parent / 'sbom.trivy.json').read_text()), report)
+    db = pathlib.Path(sys.argv[4]) / 'db'
+    metadata = json.loads((db / 'metadata.json').read_text())
+    with (db / 'trivy.db').open('rb') as stream:
+        metadata['sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
+    (out / 'db-metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    validate_database(metadata)
     status = evaluate(report, status['scannerExitCode'])
-except (ValueError, KeyError, TypeError) as error:
+except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
     status['error'] = str(error)
 (out / 'scan-status.json').write_text(json.dumps(status, indent=2) + '\n')
 print(json.dumps(status))

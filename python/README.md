@@ -20,11 +20,12 @@ headers. Debian packages/copyright and Waitress's `.dist-info` including license
 metadata remain discoverable. `/usr/share/sovereign-stack/python/` retains the
 requirements lock and build Debian package/version/doc records. The complete
 `dependencies` stage is tagged `sovereign-stack/python-builder:local` for genuine
-builder scans; a TSV alone is not a Syft catalog.
+builder scans; a TSV alone is not a Trivy package inventory.
 
 To update, review the [PyPI release metadata](https://pypi.org/pypi/waitress/json),
 download/hash the selected wheel, update the version/hash together and rerun
-build, smoke and strict vulnerability scans. A downloaded hash is trusted only
+build, smoke and Trivy scans under the shared fixable HIGH/CRITICAL policy.
+A downloaded hash is trusted only
 after review and committing it; asking the live index for a hash during every
 build would defeat the lock. Wheel-only installation deliberately fails if no
 approved wheel exists. Snapshots and package pins must be updated together; see

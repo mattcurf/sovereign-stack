@@ -32,8 +32,7 @@ def main():
     tools = []
     for name, repo in [
         ("cosign", "sigstore/cosign"),
-        ("syft", "anchore/syft"),
-        ("grype", "anchore/grype"),
+        ("trivy", "aquasecurity/trivy"),
         ("helm", "helm/helm"),
         ("actionlint", "rhysd/actionlint"),
         ("docker-buildx", "docker/buildx"),
@@ -61,6 +60,9 @@ def main():
         elif name == "docker-compose":
             asset = "docker-compose-linux-x86_64"
             url, checksums = f"{base}/{asset}", f"{base}/checksums.txt"
+        elif name == "trivy":
+            asset = f"trivy_{version}_Linux-64bit.tar.gz"
+            url, checksums = f"{base}/{asset}", f"{base}/trivy_{version}_checksums.txt"
         else:
             asset = f"{name}_{version}_linux_amd64.tar.gz"
             url, checksums = f"{base}/{asset}", f"{base}/{name}_{version}_checksums.txt"

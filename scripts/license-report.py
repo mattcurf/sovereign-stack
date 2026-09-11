@@ -7,6 +7,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import posixpath
 import re
 import tarfile
@@ -24,6 +25,27 @@ def attribution_path(path):
     return bool(
         re.search(r"(?:^|[._-])(copyright|copying|licen[sc]e|notice|authors)([._-].*)?$", name)
     ) or path.startswith("/usr/share/common-licenses/")
+
+
+def source_texts(root, output):
+    """Collect source notices without following symlinks or generated directories."""
+    texts, unresolved = {}, []
+    excluded = {'.git', '.tools', 'node_modules', 'target', 'evidence', 'build', 'release', '.amp'}
+    for directory, dirs, files in os.walk(root, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if d not in excluded
+                         and Path(directory, d).resolve() != output.resolve())
+        for name in sorted(files):
+            path = Path(directory, name)
+            relative = '/' + str(path.relative_to(root))
+            if not attribution_path(relative):
+                continue
+            try:
+                if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_TEXT:
+                    raise ValueError("symlink, non-regular file, or exceeds 8 MiB evidence limit")
+                texts[relative] = path.read_text(encoding='utf-8')
+            except (ValueError, UnicodeError, OSError) as error:
+                unresolved.append({'path': relative, 'reason': str(error)})
+    return texts, unresolved
 
 
 def archive_texts(archive):
@@ -110,8 +132,9 @@ def archive_build_metadata(archive):
 
 
 def report(sbom, texts=None, archive_unresolved=None):
-    if not isinstance(sbom, dict) or not isinstance(sbom.get("artifacts"), list):
-        raise TypeError("Expected Syft native JSON with artifacts array")
+    if (not isinstance(sbom, dict) or sbom.get("SchemaVersion") != 2
+            or not isinstance(sbom.get("Results", []), list)):
+        raise TypeError("Expected Trivy native JSON SchemaVersion 2 with Results array")
     texts = texts or {}
     attributions, path_index, unresolved, packages = (
         {},
@@ -133,31 +156,83 @@ def report(sbom, texts=None, archive_unresolved=None):
     for path, text in sorted(texts.items()):
         if text.strip():
             index(text, path)
-    for number, package in enumerate(sbom["artifacts"]):
-        if not isinstance(package, dict):
-            raise TypeError(f"Malformed artifact at index {number}")
-        identity = package.get("id") or f"artifact-{number}"
+    grouped = {}
+    for scope in sbom.get("Results", []):
+        if not isinstance(scope, dict) or not isinstance(scope.get("Class"), str):
+            raise TypeError("Malformed Trivy result")
+        findings = scope.get("Licenses", [])
+        if not isinstance(findings, list):
+            raise TypeError("Malformed Trivy Licenses array")
+        for finding in findings:
+            if not isinstance(finding, dict):
+                raise TypeError("Malformed Trivy license finding")
+            text, path = finding.get("Text"), finding.get("FilePath")
+            if isinstance(text, str) and text.strip():
+                index(text, normalize(path) if isinstance(path, str) and path
+                      else "trivy:license:" + hashlib.sha256(text.encode()).hexdigest())
+        records = scope.get("Packages", [])
+        if not isinstance(records, list):
+            raise TypeError("Malformed Trivy Packages array")
+        for package in records:
+            if not isinstance(package, dict):
+                raise TypeError("Malformed Trivy package")
+            identifier = package.get("Identifier") or {}
+            if not isinstance(identifier, dict):
+                raise TypeError("Malformed Trivy package Identifier")
+            kind = {"debian": "deb", "cargo": "rust-crate"}.get(scope.get("Type"), scope.get("Type"))
+            key = json.dumps([kind, package.get("ID"), package.get("Name"),
+                              package.get("Version"), identifier.get("PURL")])
+            grouped.setdefault(key, (kind, identifier.get("PURL"), []))[2].append(package)
+    for key, (kind, purl, occurrences) in grouped.items():
+        package = occurrences[0]
+        # Trivy package IDs are scoped to a result, not globally unique.
+        identity = "trivy:" + hashlib.sha256(key.encode()).hexdigest()
         row = {
             "id": identity,
-            "name": package.get("name"),
-            "version": package.get("version"),
-            "type": package.get("type"),
-            "purl": package.get("purl"),
+            "name": package.get("Name"),
+            "version": package.get("Version"),
+            "type": kind,
+            "purl": purl,
             "licenses": [],
             "attributions": [],
             "unresolved": [],
         }
         if not isinstance(row["name"], str) or not row["name"]:
             row["unresolved"].append("missing package name")
-        licenses = package.get("licenses")
-        if not isinstance(licenses, list):
-            row["unresolved"].append("missing or malformed licenses array")
-            licenses = []
+        licenses = []
+        for occurrence in occurrences:
+            values = occurrence.get("Licenses")
+            if not isinstance(values, list):
+                row["unresolved"].append("missing or malformed licenses array")
+            else:
+                licenses.extend(values)
+            paths = occurrence.get("InstalledFiles", [])
+            if not isinstance(paths, list):
+                row["unresolved"].append("malformed InstalledFiles array")
+                paths = []
+            for path in paths:
+                if isinstance(path, str) and normalize(path) in path_index:
+                    row["attributions"].append(path_index[normalize(path)])
+            # A package manifest identifies its own directory, not nested dependencies.
+            manifest = occurrence.get("FilePath")
+            if kind == "node-pkg" and isinstance(manifest, str) and manifest:
+                directory = posixpath.dirname(normalize(manifest))
+                row["attributions"].extend(
+                    value for path, value in path_index.items()
+                    if posixpath.dirname(path) == directory
+                )
+            if kind == "python-pkg" and isinstance(manifest, str) and manifest:
+                directory = posixpath.dirname(normalize(manifest))
+                if directory.endswith('.dist-info'):
+                    row["attributions"].extend(
+                        value for path, value in path_index.items()
+                        if path.startswith(directory + '/')
+                    )
         for lic in licenses:
-            if not isinstance(lic, dict):
+            if not isinstance(lic, str):
                 row["unresolved"].append("malformed license record")
                 continue
-            value = lic.get("spdxExpression") or lic.get("value")
+            value = lic
             if isinstance(value, str) and value.strip():
                 row["licenses"].append(value)
                 if (
@@ -167,26 +242,6 @@ def report(sbom, texts=None, archive_unresolved=None):
                     row["unresolved"].append(f"unresolved license identifier: {value}")
             else:
                 row["unresolved"].append("missing or malformed license identifier")
-            contents = lic.get("contents")
-            if contents is not None and contents != "":
-                if isinstance(contents, str) and contents.strip():
-                    row["attributions"].append(
-                        index(
-                            contents, f"syft:{identity}:license:{len(row['licenses'])}"
-                        )
-                    )
-                else:
-                    row["unresolved"].append(
-                        "malformed license contents (expected text string)"
-                    )
-            locations = lic.get("locations") or []
-            if not isinstance(locations, list):
-                row["unresolved"].append("malformed license locations")
-                locations = []
-            for location in locations:
-                path = location.get("path") if isinstance(location, dict) else None
-                if isinstance(path, str) and normalize(path) in path_index:
-                    row["attributions"].append(path_index[normalize(path)])
         if row["type"] == "deb" and isinstance(row["name"], str):
             for suffix in ("copyright", "copyright.gz"):
                 path = f"/usr/share/doc/{row['name'].split(':')[0]}/{suffix}"
@@ -199,6 +254,7 @@ def report(sbom, texts=None, archive_unresolved=None):
             )
         if not row["licenses"]:
             row["unresolved"].append("no discovered license identifier; NOASSERTION")
+        row["licenses"] = sorted(set(row["licenses"]))
         row["attributions"] = sorted(set(row["attributions"]))
         if not row["attributions"]:
             row["unresolved"].append(
@@ -233,9 +289,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sbom", type=Path)
     parser.add_argument("output_dir", type=Path)
-    parser.add_argument("--image-tar", type=Path)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--image-tar", type=Path)
+    source.add_argument("--source-dir", type=Path)
     args = parser.parse_args()
     texts, issues = archive_texts(args.image_tar) if args.image_tar else ({}, [])
+    if args.source_dir:
+        texts, issues = source_texts(args.source_dir, args.output_dir.parent)
     metadata = (
         archive_build_metadata(args.image_tar)
         if args.image_tar

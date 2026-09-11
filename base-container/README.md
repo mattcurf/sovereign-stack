@@ -59,10 +59,12 @@ its Debian packages are upgraded from the same pinned snapshots before use.
 The generated `/rootfs` is scanned separately as the final base image, where
 its dpkg database and binaries have their normal absolute paths. Both images
 retain complete inventories and all CVE reports. No package or CVE is excluded.
-Scanning the generated filesystem nested inside the builder can also identify
-OpenSSL as a generic upstream binary, missing Debian's package revision and
-backported fixes. Debian revision **3.5.7-1~deb13u2** fixes the nine High/Critical
-OpenSSL matches observed here; see [DSA-6465-1 via Debian's tracker](https://security-tracker.debian.org/tracker/CVE-2026-63073).
+Trivy uses distro-aware vulnerability matching and default vendor severity with
+fallback where needed. Generic upstream binary identification can differ from
+Debian's package revision and backported fixes. Debian revision
+**3.5.7-1~deb13u2** includes the OpenSSL fixes described in
+[DSA-6465-1 via Debian's tracker](https://security-tracker.debian.org/tracker/CVE-2026-63073).
+Finding counts are scanner- and database-dependent, not a cross-scanner invariant.
 
 `SOURCE_DATE_EPOCH=1789027200` fixes the reference time (2026-09-10 08:00 UTC);
 mmdebstrap removes volatile metadata and the script clears logs/host identity.
@@ -78,9 +80,11 @@ loopback-only published ports. Host mode is a test-environment concession,
 not the deployment policy.
 
 Update snapshots, direct Debian versions and builder digests together, rebuild
-without stale caches, regenerate package evidence, and run the strict known-CVE
-gate. Pinned inputs do not auto-update security fixes. An unfixed CVE is a release
-blocker, not a reason to remove package metadata or ignore the finding. No claim
+without stale caches, regenerate package evidence, and run the Trivy gate:
+HIGH/CRITICAL findings with nonempty `FixedVersion` block; unfixed and lower-severity
+findings remain reported but do not block. Scanner, malformed-report and database
+errors also fail closed. Pinned inputs do not auto-update security fixes; never
+remove package metadata or ignore findings to manufacture a pass. No claim
 of zero CVEs is made here. Source redistribution obligations require keeping
 corresponding Debian source packages available; copyright text alone is not
 complete compliance. Mirror snapshot metadata/packages and pinned builders for

@@ -11,22 +11,13 @@
       "binary_sha256": "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
     },
     {
-      "name": "syft",
-      "version": "v1.51.1",
-      "url": "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_amd64.tar.gz",
-      "sha256": "8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3",
-      "checksum_url": "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_checksums.txt",
-      "member": "syft",
-      "binary_sha256": "abca2def61de9952fa06d3977bb1e064818facb9badfce502b450d3d6846a91f"
-    },
-    {
-      "name": "grype",
-      "version": "v0.118.0",
-      "url": "https://github.com/anchore/grype/releases/download/v0.118.0/grype_0.118.0_linux_amd64.tar.gz",
-      "sha256": "1d444c5e7360471815f7158f71935fcecc68a3c417d85c7344f770854300bba2",
-      "checksum_url": "https://github.com/anchore/grype/releases/download/v0.118.0/grype_0.118.0_checksums.txt",
-      "member": "grype",
-      "binary_sha256": "91705979c6ccb736b87e3250831f5e1a35f13767fd2032ffa85c55b1e6f58f90"
+      "name": "trivy",
+      "version": "v0.74.0",
+      "url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz",
+      "sha256": "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a",
+      "checksum_url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_checksums.txt",
+      "member": "trivy",
+      "binary_sha256": "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791"
     },
     {
       "name": "helm",

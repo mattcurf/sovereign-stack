@@ -39,6 +39,9 @@ license/notice texts, plus builder Debian package metadata/docs. npm CLI source
 is not copied. The full `static` stage is also tagged
 `sovereign-stack/nginx-builder:local` for independent build-tool SBOM/scanning.
 License discovery is best-effort evidence, not a blanket license-compliance claim.
+Native Trivy inventories and scans cover both runtime and retained build evidence,
+with only HIGH/CRITICAL findings with nonempty `FixedVersion` blocking the CVE gate.
+Unfixed and lower-severity findings stay in reports; scanner/database errors fail closed.
 See [the base README](../base-container/README.md) for pin update and CVE policy.
 
 References:

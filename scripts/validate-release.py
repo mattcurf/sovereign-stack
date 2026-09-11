@@ -6,7 +6,8 @@ from pathlib import Path
 import re
 import subprocess
 
-from vulnerability_policy import evaluate
+from vulnerability_policy import evaluate, validate_database
+from inventory_contract import validate_inventory
 
 COMPONENTS = ('base-container', 'nginx', 'rust', 'python')
 
@@ -30,7 +31,10 @@ def validate(evidence, env, inspect):
         for scope in scopes:
             directory = evidence / name / scope
             status = read(directory / 'scan-status.json')
-            report = read(directory / 'grype.json')
+            report = read(directory / 'trivy.json')
+            validate_inventory(read(directory / 'sbom.cyclonedx.json'),
+                               read(directory / 'sbom.trivy.json'), report)
+            validate_database(read(directory / 'db-metadata.json'))
             expected_status = evaluate(report, status['scannerExitCode'])
             if not expected_status['passed'] or status != expected_status:
                 raise ValueError(f'Unsuccessful release gate: {name}/{scope}')
@@ -41,20 +45,22 @@ def validate(evidence, env, inspect):
         if not isinstance(inspected, list) or len(inspected) != 1:
             raise ValueError(f'Ambiguous image evidence: {name}')
         expected = inspected[0]['Id']
-        sbom = read(directory / 'sbom.syft.json')
-        source = sbom['source']
+        sbom = read(directory / 'sbom.trivy.json')
         if (not re.fullmatch(r'sha256:[a-f0-9]{64}', expected)
-                or source['metadata']['imageID'] != expected
+                or sbom['Metadata']['ImageID'] != expected
                 or inspect(f'sovereign-stack/{name}:local') != expected):
             raise ValueError(f'Loaded image and scanned image differ: {name}')
-        # Syft's SPDX source package records config version + manifest checksum.
+        # Trivy preserves the Docker config identity in both exchange formats.
         spdx = read(directory / 'sbom.spdx.json')
-        manifest = source['metadata']['manifestDigest'].removeprefix('sha256:')
-        if not any(package.get('name') == source['name']
-                   and package.get('versionInfo') == expected.removeprefix('sha256:')
-                   and {'algorithm': 'SHA256', 'checksumValue': manifest} in package.get('checksums', [])
+        if not any(package.get('name') == sbom['ArtifactName']
+                   and package.get('primaryPackagePurpose') == 'CONTAINER'
+                   and any(annotation.get('comment') == f'ImageID: {expected}'
+                           for annotation in package.get('annotations', []))
                    for package in spdx['packages']):
             raise ValueError(f'SPDX predicate describes another image: {name}')
+        component = read(directory / 'sbom.cyclonedx.json')['metadata']['component']
+        if {'name': 'aquasecurity:trivy:ImageID', 'value': expected} not in component['properties']:
+            raise ValueError(f'CycloneDX inventory describes another image: {name}')
         result[name] = expected
     return result
 
