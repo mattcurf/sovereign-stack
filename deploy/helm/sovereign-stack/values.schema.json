@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["images"],
+  "properties": {
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base-container", "nginx", "rust", "python"],
+      "properties": {
+        "base-container": {"$ref": "#/definitions/image"},
+        "nginx": {"$ref": "#/definitions/image"},
+        "rust": {"$ref": "#/definitions/image"},
+        "python": {"$ref": "#/definitions/image"}
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "string",
+      "pattern": "^ghcr\\.io/[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)+@sha256:[0-9a-f]{64}$"
+    }
+  }
+}

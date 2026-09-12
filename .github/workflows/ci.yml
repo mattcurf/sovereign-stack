@@ -1,0 +1,141 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    name: Code & Workflow Validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - name: Syntax, unit tests and deployment renderers
+        run: ./scripts/check.sh
+  build:
+    name: Container Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: ./.github/actions/build-images
+      - name: Export exact runtime and builder images
+        run: |
+          mkdir -p build
+          docker save -o build/runtime.tar sovereign-stack/base-container:local sovereign-stack/nginx:local sovereign-stack/rust:local sovereign-stack/python:local
+          docker save -o build/builders.tar sovereign-stack/base-container-builder:local sovereign-stack/nginx-builder:local sovereign-stack/rust-builder:local sovereign-stack/python-builder:local
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-images
+          path: build/runtime.tar
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: builder-images
+          path: build/builders.tar
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 1
+  smoke:
+    name: Runtime Security & HTTP Tests
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-images
+          path: build
+      - name: Load and test the built runtime images
+        run: |
+          docker load -i build/runtime.tar
+          ./scripts/smoke-images.sh
+  sbom:
+    name: SBOM Generation & License Reports
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: '*-images'
+          merge-multiple: true
+          path: build
+      - name: Load images and collect all inventories and notices
+        run: |
+          docker load -i build/runtime.tar
+          docker load -i build/builders.tar
+          rm build/runtime.tar build/builders.tar
+          ./scripts/scan-images.sh --collect-only
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: sbom-and-licenses
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+  cve:
+    name: ${{ matrix.name }}
+    needs: sbom
+    if: ${{ !cancelled() && (needs.sbom.result == 'success' || needs.sbom.result == 'failure') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: runtime
+            name: Runtime CVE Scan
+          - scope: build-tools
+            name: Build Tools CVE Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-tools
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sbom-and-licenses
+          path: evidence
+      - name: Fresh database scan of selected inventories
+        env:
+          SCAN_SCOPE: ${{ matrix.scope }}
+        run: bash scripts/check-cves.sh "$SCAN_SCOPE"
+      - name: Publish scan summary
+        if: always()
+        env:
+          SCAN_SCOPE: ${{ matrix.scope }}
+        run: |
+          if [[ -f "evidence/cve-$SCAN_SCOPE.md" ]]; then
+            cat "evidence/cve-$SCAN_SCOPE.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Scan failed before a report was generated; inspect the job logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: cve-${{ matrix.scope }}-reports
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

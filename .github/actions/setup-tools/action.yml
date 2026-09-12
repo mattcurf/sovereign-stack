@@ -1,0 +1,17 @@
+name: Verified tool cache
+description: Restore downloads and binaries, then verify every byte against the lockfile.
+runs:
+  using: composite
+  steps:
+    - name: Restore pinned tool cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          .tools/bin
+          .tools/cache
+        key: tools-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/lock.json', 'tools/install.py') }}
+    - name: Verify and install pinned tools
+      shell: bash
+      run: |
+        ./tools/install.sh
+        echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
