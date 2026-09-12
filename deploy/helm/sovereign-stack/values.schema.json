@@ -4,6 +4,7 @@
   "additionalProperties": false,
   "required": ["images"],
   "properties": {
+    "kata": {"type": "boolean"},
     "images": {
       "type": "object",
       "additionalProperties": false,

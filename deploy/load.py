@@ -38,7 +38,10 @@ def main():
     parser.add_argument("engine", choices=("compose", "helm"))
     parser.add_argument("inventory", help="JSON mapping of exactly four GHCR digest refs")
     parser.add_argument("--render", action="store_true", help="verify and render without deploying")
+    parser.add_argument("--kata", action="store_true", help="Helm only: run all four images with RuntimeClass kata")
     args = parser.parse_args()
+    if args.kata and args.engine != "helm":
+        parser.error("--kata requires the Helm loader; Compose is unchanged")
     # Only read the caller-controlled path once. TemporaryDirectory is private (0700).
     images = read_inventory(args.inventory)
     with tempfile.TemporaryDirectory(prefix="sovereign-stack-") as directory:
@@ -51,7 +54,10 @@ def main():
             command = ["docker", "compose", "-p", "sovereign-stack", "-f", str(config)]
             command += ["config"] if args.render else ["up", "-d", "--wait"]
         else:
-            config.write_text(json.dumps({"images": images}), encoding="utf-8")
+            values = {"images": images}
+            if args.kata:
+                values["kata"] = True
+            config.write_text(json.dumps(values), encoding="utf-8")
             chart = str(HERE / "helm" / "sovereign-stack")
             command = (["helm", "template", "sovereign-stack", chart] if args.render else
                        ["helm", "upgrade", "--install", "sovereign-stack", chart,
