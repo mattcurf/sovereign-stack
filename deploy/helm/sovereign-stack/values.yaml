@@ -1,2 +1,3 @@
 # Intentionally empty: real published digests must be supplied by the verified loader.
 images: {}
+kata: false

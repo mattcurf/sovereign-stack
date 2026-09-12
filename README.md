@@ -59,14 +59,6 @@ SPDX and Trivy-generated CycloneDX documents. `trivy sbom` scans the CycloneDX
 documents for all 25 inventories under the same blocking policy. See the
 [evidence guide](docs/evidence.md) for reports, database validation and limits.
 
-Amp orbs run `.agents/setup` to cache the pinned tools. `.agents/resume` remains
-fast and reconnects a supervised, Unix-socket-only Docker daemon without installing
-dependencies. Container build toolchains live in pinned builder images rather than
-an unrelated host npm/pip/Cargo environment. The first container build downloads
-application dependencies; subsequent builds reuse Docker layers. Setup does not
-start a daemon or prebuild container images. Orb-only login settings use host
-networking for nested Docker builds/tests; production loaders retain isolation.
-
 ## CI and release lifecycle
 
 - **CI** runs pin/syntax/unit/renderer checks, builds and smoke-tests all images,
@@ -121,7 +113,14 @@ cosign verify-blob --bundle inventory.sigstore.json \
 ./deploy/compose/load.sh inventory.json
 # OR, with an independently administered Kubernetes cluster/current kube-context:
 ./deploy/helm/load.sh inventory.json
+# OR, on a cluster configured with the Kata Containers RuntimeClass named kata:
+./deploy/helm/load.sh inventory.json --kata
 ```
+
+The opt-in [VM-isolated runtime demonstration](deploy/README.md#vm-isolated-runtime-demonstration-kata-containers)
+runs nginx, Rust, and Python in separate Kata Pods, plus a base-container smoke
+Job, so all four runtime images execute behind a per-Pod VM boundary. It requires
+administrator-provisioned Kata nodes; the ordinary Compose and Helm modes are unchanged.
 
 The loaders verify image signatures and SBOM/provenance attestations before
 starting anything. The trusted signer is operator policy, not an input supplied

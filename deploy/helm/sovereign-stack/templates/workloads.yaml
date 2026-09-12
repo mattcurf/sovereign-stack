@@ -16,6 +16,9 @@ spec:
         app.kubernetes.io/instance: {{ $.Release.Name }}
         app.kubernetes.io/name: {{ $name }}
     spec:
+      {{- if $.Values.kata }}
+      runtimeClassName: kata
+      {{- end }}
       nodeSelector:
         kubernetes.io/os: linux
         kubernetes.io/arch: amd64

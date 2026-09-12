@@ -62,8 +62,8 @@ class LoaderTests(unittest.TestCase):
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()]
         return result, calls
 
-    def assert_blocked(self, engine, **env):
-        result, calls = self.run_loader(engine, **env)
+    def assert_blocked(self, engine, *flags, **env):
+        result, calls = self.run_loader(engine, *flags, **env)
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertFalse(any(call[0] in ("docker", "helm") for call in calls), calls)
         return calls
@@ -96,6 +96,20 @@ class LoaderTests(unittest.TestCase):
         for engine in ("compose", "helm"):
             self.assert_blocked(engine, SIGNER="https://github.com/attacker/workflow")
             self.assert_blocked(engine, ISSUER="https://attacker.example")
+
+    def test_kata_preserves_verification_and_rejects_compose(self):
+        self.assertEqual(self.assert_blocked("compose", "--kata"), [])
+        for flags in (("--kata",), ("--kata", "--render")):
+            result, calls = self.run_loader("helm", *flags)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(calls), 13)
+            self.assertTrue(all(call[0] == "cosign" for call in calls[:12]))
+            self.assertEqual(json.loads(self.config.read_text()), {"images": IMAGES, "kata": True})
+            self.assertEqual(calls[-1][1], "template" if "--render" in flags else "upgrade")
+            for image in IMAGES.values():
+                for stage in ("signature", "spdxjson", "slsaprovenance1"):
+                    with self.subTest(flags=flags, image=image, stage=stage):
+                        self.assert_blocked("helm", *flags, FAIL_IMAGE=image, FAIL_STAGE=stage)
 
     def test_positive_all_verified_before_exact_config(self):
         for engine in ("compose", "helm"):
@@ -212,6 +226,36 @@ class RealRendererTests(unittest.TestCase):
                 self.assertIn(f"port: {port}", rendered)
             self.assertNotIn("hostPath", rendered)
             self.assertNotIn("docker.sock", rendered)
+            self.assertNotIn("runtimeClassName", rendered)
+            self.assertNotIn("kind: Job", rendered)
+            values.write_text(json.dumps({"images": IMAGES, "kata": True}))
+            for command in (["helm", "lint", chart, "--strict"],
+                            ["helm", "template", "test", chart]):
+                result = subprocess.run([*command, "-f", str(values)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            workloads = [doc for doc in result.stdout.split("---")
+                         if "kind: Deployment" in doc or "kind: Job" in doc]
+            self.assertEqual(len(workloads), 4)
+            for name, image in IMAGES.items():
+                workload, = [doc for doc in workloads if image in doc]
+                self.assertIn("runtimeClassName: kata", workload, name)
+                for field in ("runAsUser: 65532", "readOnlyRootFilesystem: true",
+                              "allowPrivilegeEscalation: false", "drop: [ALL]",
+                              "automountServiceAccountToken: false", "type: RuntimeDefault",
+                              "cpu: 500m", "memory: 128Mi"):
+                    self.assertIn(field, workload, name)
+                if name == "base-container":
+                    for field in ("kind: Job", "helm.sh/hook: post-install,post-upgrade",
+                                  "helm.sh/hook-delete-policy: before-hook-creation",
+                                  "backoffLimit: 0", "activeDeadlineSeconds: 120",
+                                  "restartPolicy: Never", "base-container smoke passed"):
+                        self.assertIn(field, workload)
+                else:
+                    self.assertIn("readinessProbe:", workload)
+            values.write_text(json.dumps({"images": IMAGES, "kata": "true"}))
+            result = subprocess.run(["helm", "template", "test", chart, "-f", str(values)],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
             for images in ({}, {**IMAGES, "nginx": "nginx:latest"},
                            {**IMAGES, "nginx": IMAGES["nginx"][:-1]}):
                 values.write_text(json.dumps({"images": images}))

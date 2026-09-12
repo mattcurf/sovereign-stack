@@ -30,7 +30,7 @@ and uses the same parsed values for rendering/deployment. Temporary files are
 cleaned on normal exit and verification failure. Host administrator/same-user
 process compromise is outside this boundary.
 
-All four images, including the non-running base image, require a signature,
+All four images, including the base image (normally non-running), require a signature,
 SPDX JSON attestation (`--type spdxjson`), and SLSA v1 provenance attestation
 (`--type slsaprovenance1`, predicate `https://slsa.dev/provenance/v1`). The
 unversioned `slsaprovenance` alias selects v0.2 in pinned Cosign v3.1.3 and must
@@ -69,6 +69,86 @@ and disables service-account token mounting. ClusterIP is cluster-internal, not
 loopback isolation or a NetworkPolicy. The chart has no ingress, LoadBalancer,
 host ports, or node ports. Adjust limits deliberately with workload evidence;
 the current interface does not accept arbitrary override files.
+
+## VM-isolated runtime demonstration (Kata Containers)
+
+`deploy/helm/load.sh inventory.json --kata` selects the **administrator-owned**
+RuntimeClass `kata` for every application Pod and runs the verified base image
+in a short-lived smoke Job. Each Pod contains one container, so the four runtime
+images each execute in a separate VM sandbox. Builder stages are not deployed.
+Compose does not support this option; passing it fails rather than silently
+running without VM isolation. Omitting it preserves the original runtime behavior.
+
+### Prepare a dedicated cluster
+
+Use Linux/amd64 nodes with hardware virtualization and usable `/dev/kvm` (bare
+metal or explicitly supported nested virtualization). Install a reviewed/pinned
+[Kata Containers release](https://github.com/kata-containers/kata-containers/releases)
+and configure the node CRI runtime using the upstream
+[Kata deployment instructions](https://github.com/kata-containers/kata-containers/tree/main/tools/packaging/kata-deploy).
+This loader does not install a hypervisor, change containerd, or grant node privileges.
+
+The administrator must provision a Kubernetes
+[RuntimeClass](https://kubernetes.io/docs/concepts/containers/runtime-class/)
+named `kata`, whose `handler` maps to the installed **Kata VM runtime**, not runc.
+Handler names vary by installation (for example, `kata-qemu`); do not assume the
+class name establishes this mapping. Configure its `scheduling.nodeSelector`
+and tolerations to restrict Pods to Kata-capable nodes, and set `overhead.podFixed`
+from the installed hypervisor's measured requirements. The existing 128 MiB
+container limits do not budget the guest VM's overhead. Confirm compatibility
+with the chart's non-root user, read-only filesystem, and RuntimeDefault seccomp.
+Registry pull credentials, if needed, must also be provisioned in the namespace.
+
+### Execute and inspect all four images
+
+First verify the release inventory bundle as shown in the root README. Then:
+
+```sh
+kubectl get runtimeclass kata -o yaml
+./deploy/helm/load.sh inventory.json --kata --render
+./deploy/helm/load.sh inventory.json --kata
+
+kubectl -n sovereign-stack get pods \
+  -l app.kubernetes.io/instance=sovereign-stack \
+  -o custom-columns=NAME:.metadata.name,RUNTIME:.spec.runtimeClassName,NODE:.spec.nodeName,PHASE:.status.phase
+kubectl -n sovereign-stack wait --for=condition=complete \
+  job/sovereign-stack-base-smoke --timeout=120s
+kubectl -n sovereign-stack logs job/sovereign-stack-base-smoke
+```
+
+The loader still verifies all twelve image/signature-attestation claims before
+invoking Helm. Helm waits for the three application HTTP readiness probes at `/`
+on port 8080, then runs and waits for the base smoke hook. Its expected output is
+`base-container smoke passed`; it checks UID 65532 and the Debian OS metadata.
+The base Job runs again on each Kata install/upgrade, with no retries and a
+120-second deadline. A failed hook makes the command fail, but does not roll back
+already-running applications. The prior hook is removed before the next run;
+save logs before upgrading. Missing RuntimeClass/handler errors are not retried
+with the default runtime. Diagnose failures with `kubectl describe pod` and node
+runtime logs, not by removing `runtimeClassName` or weakening the security context.
+
+For an interactive HTTP check, run `kubectl -n sovereign-stack port-forward
+service/sovereign-stack-nginx 8081:8081` in a separate local terminal, then
+`curl --fail http://127.0.0.1:8081/`. Repeat for `sovereign-stack-rust` with
+`8082:8082` and `sovereign-stack-python` with `8083:8083`; each must return its
+hello-world response.
+
+**RuntimeClass selection is not proof of VM isolation.** On the assigned nodes,
+have the administrator correlate each Pod UID / CRI sandbox ID with Kata's shim
+and hypervisor/guest instance using the installed runtime's diagnostics. Record
+the runtime version, handler configuration, node evidence, Pod specs, readiness,
+and base Job logs. A VM boundary is not confidential computing, remote attestation,
+or protection from a compromised host/hypervisor. Cluster policy must prevent
+untrusted users from changing RuntimeClasses or bypassing the loader.
+
+Cleanup: run `helm uninstall sovereign-stack -n sovereign-stack`, then
+`kubectl -n sovereign-stack delete job sovereign-stack-base-smoke --ignore-not-found`.
+Helm hook resources are retained for inspection and are not removed by uninstall.
+Delete the retained Job explicitly as well when switching back to ordinary mode.
+
+Offline tests cover rendering and verification gates, not VM execution. End-to-end
+validation requires this dedicated cluster and real signed release images; ordinary
+Docker CI and environments without KVM do not establish Kata runtime compatibility.
 
 ## Theory and enforcement boundary
 
