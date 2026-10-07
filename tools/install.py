@@ -22,6 +22,58 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def download(cache, url, expected):
+    archive = cache / expected
+    if archive.exists():
+        if digest(archive) != expected:
+            raise SystemExit(f"Corrupt cached artifact: {archive}")
+        return archive
+    with tempfile.TemporaryDirectory(dir=cache) as tmp:
+        staged = Path(tmp) / "download"
+        subprocess.run(
+            ["curl", "--fail", "--location", "--silent", "--show-error",
+             "--proto", "=https", "--tlsv1.2", url, "-o", str(staged)],
+            check=True,
+        )
+        if digest(staged) != expected:
+            raise SystemExit(f"Checksum mismatch: {url}")
+        staged.replace(archive)
+    return archive
+
+
+def build_source(root, cache, archive, tool, tmp):
+    build = tool["source_build"]
+    compiler = build["go"]
+    go_archive = download(cache, compiler["url"], compiler["sha256"])
+    with tarfile.open(go_archive) as tar:
+        tar.extractall(tmp, filter="data")
+    with tarfile.open(archive) as tar:
+        tar.extractall(tmp, filter="data")
+    source = tmp / tool["member"]
+    if build.get("patch"):
+        patch = root / build["patch"]
+        if digest(patch) != build["patch_sha256"]:
+            raise SystemExit(f"Source patch checksum mismatch: {tool['name']}")
+        subprocess.run(["git", "apply", str(patch)], cwd=source, check=True,
+                       env=dict(os.environ, GIT_CEILING_DIRECTORIES=str(tmp)))
+    # Source go.mod/go.sum (plus the reviewed patch) freeze the dependency graph.
+    # Never let ambient Go settings, a vendor tree, or an automatic toolchain
+    # upgrade change it. Trim paths and omit timestamps/VCS state for identical bytes.
+    env = dict(os.environ, GOENV="off", GOWORK="off", GOTOOLCHAIN="local",
+               GOFLAGS="", GOOS="linux", GOARCH="amd64", GOAMD64="v1",
+               CGO_ENABLED="0", GOPROXY="https://proxy.golang.org",
+               GOSUMDB="sum.golang.org", GOPRIVATE="", GONOPROXY="",
+               GONOSUMDB="", GOMODCACHE=str(cache / "go-mod"),
+               GOCACHE=str(cache / "go-build"))
+    output = tmp / "binary"
+    subprocess.run(
+        [str(tmp / "go/bin/go"), "build", "-p=4", "-mod=readonly", "-trimpath",
+         "-buildvcs=false", "-ldflags=" + build["ldflags"], "-o", str(output),
+         build["package"]], cwd=source, env=env, check=True,
+    )
+    return output.read_bytes()
+
+
 def retire_obsolete_binaries(bindir):
     owned = []
     for name, expected in RETIRED_BINARIES.items():
@@ -73,28 +125,10 @@ def main():
             and digest(target) == tool["binary_sha256"]
         ):
             with tempfile.TemporaryDirectory(dir=cache) as tmp:
-                if not archive.exists():
-                    download = Path(tmp) / "download"
-                    subprocess.run(
-                        [
-                            "curl",
-                            "--fail",
-                            "--location",
-                            "--silent",
-                            "--show-error",
-                            "--proto",
-                            "=https",
-                            "--tlsv1.2",
-                            tool["url"],
-                            "-o",
-                            str(download),
-                        ],
-                        check=True,
-                    )
-                    if digest(download) != tool["sha256"]:
-                        raise SystemExit(f"Checksum mismatch: {tool['name']}")
-                    download.replace(archive)
-                if tool["member"]:
+                archive = download(cache, tool["url"], tool["sha256"])
+                if "source_build" in tool:
+                    binary = build_source(root, cache, archive, tool, Path(tmp))
+                elif tool["member"]:
                     with tarfile.open(archive) as tar:
                         member = tar.getmember(tool["member"])
                         if not member.isfile():

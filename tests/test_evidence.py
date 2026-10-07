@@ -308,7 +308,7 @@ checksum = "0000000000000000000000000000000000000000000000000000000000000000"
             self.assertEqual(result.returncode, 0, result.stderr)
             document = json.loads(result.stdout)
             self.assertEqual(document["SchemaVersion"], 2)
-            self.assertEqual(document["Trivy"]["Version"], "0.74.0")
+            self.assertEqual(document["Trivy"]["Version"], "0.75.0")
             self.assertTrue(
                 any(
                     scope["Type"] == "cargo" and p.get("Name") == "tokio" and p["Version"] == "1.48.0"

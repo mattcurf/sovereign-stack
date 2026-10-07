@@ -1,6 +1,7 @@
 """Native Trivy inventory partition and attribution contracts (offline)."""
 
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -161,7 +162,15 @@ class TrivyBinaryIntegrationTests(unittest.TestCase):
                 shutil.copy(ROOT / 'scripts' / script, root / 'scripts' / script)
             shutil.copy(ROOT / '.tools/bin/actionlint', root / '.tools/bin/actionlint')
             (root / '.tools/bin/trivy').symlink_to(ROOT / '.tools/bin/trivy')
-            (root / 'tools/lock.json').write_text('{"tools": []}')
+            patch = root / 'tools/deps.patch'
+            patch.write_bytes(b'reviewed dependency patch fixture\n')
+            tool = {
+                'name': 'actionlint',
+                'binary_sha256': hashlib.sha256((root / '.tools/bin/actionlint').read_bytes()).hexdigest(),
+                'source_build': {'patch': 'tools/deps.patch',
+                                 'patch_sha256': hashlib.sha256(patch.read_bytes()).hexdigest()},
+            }
+            (root / 'tools/lock.json').write_text(json.dumps({'tools': [tool]}))
             result = subprocess.run(['bash', str(root / 'scripts/tool-evidence.sh'), '--collect-only'],
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -170,6 +179,13 @@ class TrivyBinaryIntegrationTests(unittest.TestCase):
             self.assertTrue(any(p['Name'] == 'stdlib' for p in packages))
             self.assertTrue(any(p['Name'] == 'github.com/rhysd/actionlint' for p in packages))
             self.assertFalse((root / 'evidence/tools/scan-status.json').exists())
+            self.assertEqual((root / 'evidence/tools/source-patches/actionlint.patch').read_bytes(),
+                             patch.read_bytes())
+            patch.write_bytes(b'unreviewed change\n')
+            result = subprocess.run(['bash', str(root / 'scripts/tool-evidence.sh'), '--collect-only'],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('does not match reviewed patch', result.stderr)
 
 
 if __name__ == "__main__":

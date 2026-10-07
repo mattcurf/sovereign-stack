@@ -19,6 +19,14 @@ for tool in lock['tools']:
     binary = root / '.tools/bin' / tool['name']
     if binary.is_symlink() or hashlib.sha256(binary.read_bytes()).hexdigest() != tool['binary_sha256']:
         raise SystemExit(f'Tool evidence does not match reviewed binary: {tool["name"]}')
+    build = tool.get('source_build', {})
+    if build.get('patch'):
+        data = (root / build['patch']).read_bytes()
+        if hashlib.sha256(data).hexdigest() != build['patch_sha256']:
+            raise SystemExit(f'Tool evidence does not match reviewed patch: {tool["name"]}')
+        patches = output.parent / 'source-patches'
+        patches.mkdir(exist_ok=True)
+        (patches / (tool['name'] + '.patch')).write_bytes(data)
 inventory = json.loads(output.read_text())
 inventory['sovereignStackTools'] = lock
 output.write_text(json.dumps(inventory, indent=2) + '\n')

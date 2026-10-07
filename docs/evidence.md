@@ -21,20 +21,39 @@ scripts are executed. Do not add a second system-wide security-tool installer.
 SHA-256. Installed bytes and any existing cache archives are verified every run.
 A valid warm installation makes no network request, even if its download cache
 is absent. Corrupt cached bytes fail closed; a modified binary can be restored
-from a verified cache. Only explicitly named regular archive members are read;
-archives are not extracted into the host filesystem. Docker Engine's eight
-binaries reuse one content-addressed archive. Existing unrelated Docker plugin
+from verified inputs. Downloaded executable archives read only explicitly named
+regular members. Source builds extract hash-verified source/compiler archives
+into a temporary directory using Python's data filter. Docker Engine's four
+binaries and containerd's three binaries each reuse a content-addressed archive.
+Existing unrelated Docker plugin
 files are not overwritten. Migration retires only recognized old pinned scanner
 binaries after verifying their identity; unrelated or modified files are not
 silently removed. The same reviewed lockfile governs source setup, installer and
 updater; neither CI nor installation runs the updater automatically.
 
-Pins were resolved from the actual stable releases on 2026-09-10: Cosign 3.1.3,
-Trivy 0.74.0, Helm 4.3.0, actionlint 1.7.12, buildx 0.37.0,
-Compose 5.5.1, and Docker Engine 29.8.0: 14 pinned binaries in total.
-Trivy is the official upstream binary, not a custom build. The first six artifacts were
-checked against their release checksum assets (Helm uses get.helm.sh). Binary
-hashes were then computed from those verified archives. This is checksum
+The 2026-10-07 remediation pins Trivy 0.75.0, Helm 4.3.0, Compose 5.6.0,
+Docker Engine 29.8.2, standalone containerd 2.4.1, and runc **1.6.0-rc.1**:
+14 installed executables including three source builds. The release candidate is
+intentional: stable runc 1.5.2 still embeds vulnerable x/net 0.55.0. It needs the
+same build and runtime-security checks as any other runtime upgrade; replace it
+with a verified stable release when available. Containerd/runc are no longer the
+older versions bundled in Docker's static archive.
+
+Cosign 3.1.3, actionlint 1.7.12 and Buildx 0.37.2 are rebuilt with hash-pinned
+Go 1.27.1 because their official binaries still block publication. Cosign updates
+x/crypto, x/mod, x/text, gRPC and the required transitive modules; Buildx updates
+go-archive to 0.3.0. `tools/patches/` contains exact go.mod/go.sum diffs, also
+hash-pinned in `tools/lock.json`. The installer uses `-mod=readonly`, the Go checksum
+database, no automatic compiler upgrades, CGO disabled (as in these upstream
+builds), fixed version labels, and trimmed paths without timestamps/VCS state.
+Every rebuilt executable must match its reviewed output SHA-256 before installation.
+Cold installation needs network access and compilation time; warm installs only
+verify the existing bytes. Source archives, compiler and module/build caches stay
+under `.tools/cache`; only the 14 final executables enter the tool inventory.
+
+Trivy remains the official upstream binary. Downloaded executables other than
+Docker were checked against release checksum assets; Go against go.dev's checksum.
+Source-archive hashes are measured from upstream HTTPS downloads. This is checksum
 verification, **not verification of upstream release signatures**: initial trust
 includes HTTPS, GitHub/release publishers, and the reviewed lockfile.
 
@@ -50,8 +69,11 @@ and do not share a privileged daemon with untrusted tenants. Image scanning does
 not start application processes, but still trusts the daemon's image/export view.
 
 Maintainers can run `python3 tools/refresh-lock.py` (requires authenticated `gh`)
-to regenerate pins. Review every version/URL/hash change and rerun cold and warm
-installation tests. This updater is **not** called by the installer or CI.
+to regenerate an upstream-only lockfile. It refuses a lockfile containing source
+builds rather than silently undoing CVE remediation. For this lockfile, update
+source/dependency patches and compiler pins explicitly, reproduce the output
+hashes, then rescan all scopes. Review every version/URL/hash change and rerun cold
+and warm installation tests. This updater is **not** called by the installer or CI.
 
 ## Independent collection and fail-closed scanning
 

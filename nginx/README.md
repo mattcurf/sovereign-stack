@@ -9,16 +9,20 @@ build inputs. The Node image bundles an older npm, so the Dockerfile replaces it
 complete npm tree with the official npm 11.19.1 distribution, verified by a pinned
 SHA-256 before extraction. The archive was also checked against npm's published
 SHA-512 integrity value when selecting the pin. Existing npm/npx entrypoint links
-are preserved; no custom binary is compiled and no individual dependencies are patched.
-The build asserts the installed npm version before collecting fresh evidence.
+are preserved; no custom binary is compiled.
 
-This release bundles brace-expansion **5.0.9**, tar **7.5.22**, and ip-address
-**10.5.0**, fixing the previously reported npm dependency advisories. Both the
+As of 2026-10-07, even the newer npm 11.21.0 and 12.2.0 distributions still bundle
+vulnerable brace-expansion 5.0.9 and undici 6.28.0. The Dockerfile replaces their
+complete package directories with the official **5.0.11** and **6.28.1** archives,
+respectively, using pinned SHA-256 hashes checked against registry SHA-512 integrity
+values. These are compatible patch updates, not edited version metadata or ignore
+rules. Licenses and all source files are retained. The build asserts npm and both
+patched dependency versions, then exercises `npm ci` and `npm run build`. Both the
 actual builder inventory and copied build provenance must be regenerated and
 rescanned; changing a version string alone is not remediation.
 
 The final image derives from `ARG BASE_IMAGE` (default
-`sovereign-stack/base-container:local`). Debian nginx **1.26.3-3+deb13u7** and
+`sovereign-stack/base-container:local`). Debian nginx **1.26.3-3+deb13u9** and
 its dependencies are installed normally from the inherited signed snapshots;
 dpkg identity/copyright is preserved. Node/npm executables are not copied into
 the runtime. Debian's nginx package dependency set costs more space than copying
