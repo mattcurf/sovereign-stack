@@ -34,8 +34,13 @@ stages, not production processes. Exact runtime contents are visible in SBOMs.
 Prerequisites: Linux/amd64, Bash, Python 3, curl, tar, jq, Git, and a running Docker
 daemon. Docker access is effectively host-root access; use an isolated machine.
 GitHub CLI is needed only for release/audit operations. The locked installer
-provides native Trivy 0.74.0, Cosign, Helm, actionlint, Docker userspace, Buildx,
-and Compose: 14 pinned binaries, with no custom security-tool builds.
+provides native Trivy 0.75.0, Cosign, Helm, actionlint, Docker userspace, Buildx,
+and Compose: 14 pinned executables. Cosign, actionlint and Buildx are reproducible
+source builds using hash-pinned Go 1.27.1 and reviewed dependency patches because
+official binaries still have blocking CVEs. Cold installs require network access
+and compilation time; warm installs verify the reviewed executable hashes.
+See [toolchain pins and trust requirements](docs/evidence.md#install-the-reviewed-tools),
+including the intentional runc 1.6.0-rc.1 pin and checksum/signature limitations.
 
 ```sh
 ./tools/install.sh
