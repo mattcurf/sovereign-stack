@@ -1,6 +1,6 @@
 # Tokio hello-world HTTP server
 
-Rust **1.98.1** is supplied by a digest-pinned official Debian trixie builder.
+Rust **1.99.0** is supplied by a digest-pinned official Debian trixie builder.
 Tokio **1.53.1** and every transitive dependency/checksum are in `Cargo.lock`.
 The builder runs `cargo test --locked` then `cargo build --release --locked`;
 lockfile drift is an error. No native libraries are downloaded ad hoc.

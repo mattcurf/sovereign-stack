@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import tempfile
 import tarfile
 import unittest
@@ -119,7 +120,115 @@ class InstallerTests(unittest.TestCase):
                 installer.main()
 
 
+class SourceBuildTests(InstallerTests):
+    def setUp(self):
+        super().setUp()
+        self.patch = self.root / "tools/deps.patch"
+        self.patch.write_text(
+            "--- a/go.mod\n+++ b/go.mod\n@@ -1,2 +1,2 @@\n"
+            " module example.test/tool\n-require example.test/dep v1.0.0\n"
+            "+require example.test/dep v1.0.1\n"
+        )
+        self.archives = {}
+        for url, name, data in (
+            ("https://example.test/source", "project/go.mod",
+             b"module example.test/tool\nrequire example.test/dep v1.0.0\n"),
+            ("https://example.test/go", "go/bin/go", b"fake compiler"),
+        ):
+            stream = io.BytesIO()
+            with tarfile.open(fileobj=stream, mode="w:gz") as tar:
+                member = tarfile.TarInfo(name)
+                member.size = len(data)
+                tar.addfile(member, io.BytesIO(data))
+            self.archives[url] = stream.getvalue()
+        self.tool.update(
+            url="https://example.test/source", member="project",
+            sha256=hashlib.sha256(self.archives["https://example.test/source"]).hexdigest(),
+            source_build={
+                "go": {"url": "https://example.test/go",
+                       "sha256": hashlib.sha256(self.archives["https://example.test/go"]).hexdigest()},
+                "patch": "tools/deps.patch",
+                "patch_sha256": installer.digest(self.patch),
+                "package": "./cmd/tool", "ldflags": "-s -w -buildid=",
+            },
+        )
+        self.write_lock()
+        self.run = subprocess.run
+
+    def download(self, args, **kwargs):
+        if args[0] == "curl":
+            Path(args[-1]).write_bytes(self.archives[args[-3]])
+        elif args[0] == "git":
+            return self.run(args, **kwargs)
+        else:
+            self.assertIn("-mod=readonly", args)
+            self.assertIn("-trimpath", args)
+            self.assertEqual(kwargs["env"]["GOTOOLCHAIN"], "local")
+            self.assertEqual(kwargs["env"]["GOENV"], "off")
+            self.assertEqual(kwargs["env"]["CGO_ENABLED"], "0")
+            self.assertIn("v1.0.1", (kwargs["cwd"] / "go.mod").read_text())
+            Path(args[args.index("-o") + 1]).write_bytes(self.binary)
+
+    def test_compiler_and_patch_hashes_fail_closed(self):
+        for field, message in (("compiler", "Checksum mismatch"),
+                               ("patch", "Source patch checksum mismatch")):
+            with self.subTest(field=field):
+                build = self.tool["source_build"]
+                old = build["go"]["sha256"] if field == "compiler" else build["patch_sha256"]
+                if field == "compiler":
+                    build["go"]["sha256"] = "0" * 64
+                else:
+                    build["patch_sha256"] = "0" * 64
+                self.write_lock()
+                with patch.object(installer.subprocess, "run", side_effect=self.download):
+                    with self.assertRaisesRegex(SystemExit, message):
+                        installer.main()
+                self.assertFalse((self.bindir / "trivy").exists())
+                if field == "compiler":
+                    build["go"]["sha256"] = old
+                else:
+                    build["patch_sha256"] = old
+
+    def test_source_archive_cannot_escape_temporary_directory(self):
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w:gz") as tar:
+            member = tarfile.TarInfo("../escape")
+            member.size = 6
+            tar.addfile(member, io.BytesIO(b"unsafe"))
+        self.archives[self.tool["url"]] = stream.getvalue()
+        self.tool["sha256"] = hashlib.sha256(stream.getvalue()).hexdigest()
+        self.write_lock()
+        with patch.object(installer.subprocess, "run", side_effect=self.download):
+            with self.assertRaises(tarfile.FilterError):
+                installer.main()
+        self.assertFalse((self.root / ".tools/cache/escape").exists())
+        self.assertFalse((self.bindir / "trivy").exists())
+
+    # The inherited cold/warm, corruption and ownership tests also run through
+    # the source-build path. A repaired binary must still match its reviewed hash.
+    def test_cold_warm_and_binary_repair(self):
+        with patch.object(installer.subprocess, "run", side_effect=self.download):
+            installer.main()
+        target = self.bindir / "trivy"
+        self.assertEqual(target.read_bytes(), self.binary)
+        with patch.object(installer.subprocess, "run") as run:
+            installer.main()
+            run.assert_not_called()
+        target.write_bytes(b"damaged")
+        with patch.object(installer.subprocess, "run", side_effect=self.download):
+            installer.main()
+        self.assertEqual(target.read_bytes(), self.binary)
+
+
 class UpdaterTests(unittest.TestCase):
+    def test_updater_cannot_discard_source_remediation(self):
+        with patch.object(updater.Path, "read_text", return_value=json.dumps({
+            "tools": [{"source_build": {}}]
+        })), patch.object(updater.subprocess, "check_output") as release:
+            with self.assertRaisesRegex(SystemExit, "reviewed source builds"):
+                updater.main()
+            release.assert_not_called()
+
     def test_trivy_asset_case_and_checksum_manifest(self):
         urls = []
 
@@ -137,11 +246,14 @@ class UpdaterTests(unittest.TestCase):
             else:
                 path.write_bytes(b"cosign")
 
-        with patch.object(updater.subprocess, "check_output", return_value=json.dumps({
-            "prerelease": False, "draft": False, "tag_name": "v0.74.0"
-        }).encode()) as release, patch.object(updater, "fetch", side_effect=fetch):
-            with self.assertRaises(TrivyReached):
-                updater.main()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "lock.json").write_text(json.dumps({"tools": []}))
+            with patch.object(updater.subprocess, "check_output", return_value=json.dumps({
+                "prerelease": False, "draft": False, "tag_name": "v0.74.0"
+            }).encode()) as release, patch.object(updater, "fetch", side_effect=fetch), \
+                    patch.object(updater, "__file__", str(Path(tmp) / "refresh-lock.py")):
+                with self.assertRaises(TrivyReached):
+                    updater.main()
         self.assertEqual(release.call_args.args[0][-1], "repos/aquasecurity/trivy/releases/latest")
         base = "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/"
         self.assertEqual(urls[-2:], [base + "trivy_0.74.0_Linux-64bit.tar.gz",

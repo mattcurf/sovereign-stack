@@ -1,6 +1,6 @@
 ARG BASE_IMAGE=sovereign-stack/base-container:local
-FROM rust:1.98.1-slim-trixie@sha256:bce1476d4be4d78b83705bc5f428b86d640eeeea33e9dadafbc037b5703a53bf AS build
-ENV SOURCE_DATE_EPOCH=1789027200
+FROM rust:1.99.0-slim-trixie@sha256:24e632c09342c20abf8312cf4f61430a911c01ed3a5e4c02b87292b1c39c5273 AS build
+ENV SOURCE_DATE_EPOCH=1791360000
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/

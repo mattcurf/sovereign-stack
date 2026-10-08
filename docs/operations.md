@@ -43,8 +43,13 @@ npm/Cargo/pip locks with the selected tools; resolve builder manifests by digest
 download official tool assets and verify their upstream checksums before
 recording new hashes. Run full build, smoke, evidence, and loader tests in a PR.
 Review the SBOM/license delta and preserve previous released inventories.
-The reviewed installer/updater pins native Trivy 0.74.0 among 14 binaries; it does
-not compile custom replacements or claim upstream signature verification. Retire
+The reviewed installer pins native Trivy 0.75.0 among 14 executables. Cosign,
+actionlint and Buildx are reproducible source builds with hash-pinned Go 1.27.1,
+source archives, reviewed go.mod/go.sum patches and final executable hashes.
+Cold installation downloads modules through the Go checksum database and compiles
+without resolving floating versions; warm installation verifies existing bytes.
+The updater refuses to discard these source-build pins. Checksum verification
+does not claim upstream signature verification. Retire
 only recognized old pinned scanner binaries, never arbitrary user files. See the
 [tool trust details](evidence.md#install-the-reviewed-tools). Replacing the scanner
 does not eliminate Go dependencies from the installed tooling.
@@ -56,6 +61,8 @@ Inputs without floating versions:
 - Debian: authenticated timestamped snapshot, which fixes transitive resolution.
 - npm/Cargo/pip: committed lockfiles, exact versions and integrity checks.
 - Downloaded security/renderer tools: release version plus recorded SHA-256.
+- Source-built tools: source/compiler/patch SHA-256, frozen modules, reproducible
+  build flags and the reviewed final executable SHA-256.
 
 GitHub's `ubuntu-24.04` runner label is **not an immutable VM image**. Its kernel,
 Docker daemon and platform remain trusted infrastructure, and Bash/Python/system

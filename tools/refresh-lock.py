@@ -29,6 +29,13 @@ def fetch(url, path):
 
 
 def main():
+    current = json.loads(Path(__file__).with_name("lock.json").read_text())
+    if any("source_build" in tool for tool in current["tools"]):
+        raise SystemExit(
+            "Lockfile contains reviewed source builds. Update their source, dependency "
+            "patches and output hashes explicitly; do not replace them with vulnerable "
+            "upstream binaries. Rescan all scopes before approving replacement pins."
+        )
     tools = []
     for name, repo in [
         ("cosign", "sigstore/cosign"),

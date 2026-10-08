@@ -3,21 +3,31 @@
   "tools": [
     {
       "name": "cosign",
-      "version": "v3.1.3",
-      "url": "https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign-linux-amd64",
-      "sha256": "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71",
-      "checksum_url": "https://github.com/sigstore/cosign/releases/download/v3.1.3/cosign_checksums.txt",
-      "member": null,
-      "binary_sha256": "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71"
+      "version": "v3.1.3-stack.1",
+      "url": "https://github.com/sigstore/cosign/archive/refs/tags/v3.1.3.tar.gz",
+      "sha256": "ab8fcb8e0b4c0b8d01aefa37790cdd5ad099366b2efb8636b7a0250915b93362",
+      "checksum_origin": "locally measured upstream source archive; reproducible patched build",
+      "member": "cosign-3.1.3",
+      "binary_sha256": "f0e42a517be52b2201615a2c928f9c05598dc38245b849dbc3496acfccbadbd8",
+      "source_build": {
+        "go": {
+          "url": "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz",
+          "sha256": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+        },
+        "patch": "tools/patches/cosign.patch",
+        "patch_sha256": "d64d281acff2396e40228f64df2d2d3569a60c4772304012fc9d9b3dccde4d35",
+        "package": "./cmd/cosign",
+        "ldflags": "-s -w -buildid= -X sigs.k8s.io/release-utils/version.gitVersion=v3.1.3-stack.1 -X sigs.k8s.io/release-utils/version.gitTreeState=modified"
+      }
     },
     {
       "name": "trivy",
-      "version": "v0.74.0",
-      "url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz",
-      "sha256": "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a",
-      "checksum_url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_checksums.txt",
+      "version": "v0.75.0",
+      "url": "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz",
+      "sha256": "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f",
+      "checksum_url": "https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_checksums.txt",
       "member": "trivy",
-      "binary_sha256": "d89bcc6510a267f11b773398cbf1be5520ce39f9e8b6633178c4487f05b7d791"
+      "binary_sha256": "93f9da8e4ba5e0c1c76d8234ed2494cf9afb0a96fd21953e424bb795f3299b8e"
     },
     {
       "name": "helm",
@@ -30,102 +40,120 @@
     },
     {
       "name": "actionlint",
-      "version": "v1.7.12",
-      "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
-      "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
-      "checksum_url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_checksums.txt",
-      "member": "actionlint",
-      "binary_sha256": "c872d6db8c6bf83a8eaa704fc93999f027d55dffbc63b8a6abdccb47df5f4cd4"
+      "version": "v1.7.12-stack.1",
+      "url": "https://github.com/rhysd/actionlint/archive/refs/tags/v1.7.12.tar.gz",
+      "sha256": "454800bd4f854592bcfe79b161f71d56e35940eb7016e48a26dd356adc9d400a",
+      "checksum_origin": "locally measured upstream source archive; reproducible patched build",
+      "member": "actionlint-1.7.12",
+      "binary_sha256": "a880dc24629654cd7ea0bec34700e1e7bd16cb9ba8f3ce2dd35d2e95594bccd6",
+      "source_build": {
+        "go": {
+          "url": "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz",
+          "sha256": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+        },
+        "package": "./cmd/actionlint",
+        "ldflags": "-s -w -buildid= -X github.com/rhysd/actionlint.version=1.7.12-stack.1 -X github.com/rhysd/actionlint.installedFrom=sovereign-stack-source-build"
+      }
     },
     {
       "name": "docker-buildx",
-      "version": "v0.37.0",
-      "url": "https://github.com/docker/buildx/releases/download/v0.37.0/buildx-v0.37.0.linux-amd64",
-      "sha256": "ae43fa08c796b44efc86d7a63c55f73f7c35f3101188dea7bf93bcd6f99577ba",
-      "checksum_url": "https://github.com/docker/buildx/releases/download/v0.37.0/checksums.txt",
-      "member": null,
-      "binary_sha256": "ae43fa08c796b44efc86d7a63c55f73f7c35f3101188dea7bf93bcd6f99577ba"
+      "version": "v0.37.2-stack.1",
+      "url": "https://github.com/docker/buildx/archive/refs/tags/v0.37.2.tar.gz",
+      "sha256": "6b4cdf64fd6b919b65be75fdfcfb6a42c9738730ee18453e26641132ecc177b4",
+      "checksum_origin": "locally measured upstream source archive; reproducible patched build",
+      "member": "buildx-0.37.2",
+      "binary_sha256": "6fee7c64b1da0e0706b7ebd5f0e05e701fd59087bc164498d9fadcf2e28a5352",
+      "source_build": {
+        "go": {
+          "url": "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz",
+          "sha256": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+        },
+        "patch": "tools/patches/buildx.patch",
+        "patch_sha256": "a60df33e7c2d0c2ff91527ba4bd3e17b84de3596413ef3621b47456496e0ca04",
+        "package": "./cmd/buildx",
+        "ldflags": "-s -w -buildid= -X github.com/docker/buildx/version.Version=v0.37.2-stack.1 -X github.com/docker/buildx/version.Package=github.com/docker/buildx"
+      }
     },
     {
       "name": "docker-compose",
-      "version": "v5.5.1",
-      "url": "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64",
-      "sha256": "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576",
-      "checksum_url": "https://github.com/docker/compose/releases/download/v5.5.1/checksums.txt",
+      "version": "v5.6.0",
+      "url": "https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-linux-x86_64",
+      "sha256": "40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a",
+      "checksum_url": "https://github.com/docker/compose/releases/download/v5.6.0/checksums.txt",
       "member": null,
-      "binary_sha256": "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576"
+      "binary_sha256": "40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a"
     },
     {
       "name": "docker",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+      "version": "29.8.2",
+      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.2.tgz",
+      "sha256": "995d1ef289677f74fd58d8d2c35727b6a4ee389c69db8638a3e42d0487aa5b0f",
       "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
       "member": "docker/docker",
-      "binary_sha256": "e966e0e6ea215b74fdbee17fbe7ed8bff15b65930bfc8e131652ceae4ed0210e"
+      "binary_sha256": "6f7a95d27f98fc8c5f6b220898988bf8f61dd9b040936797917cbdc72c6cabe6"
     },
     {
       "name": "dockerd",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+      "version": "29.8.2",
+      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.2.tgz",
+      "sha256": "995d1ef289677f74fd58d8d2c35727b6a4ee389c69db8638a3e42d0487aa5b0f",
       "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
       "member": "docker/dockerd",
-      "binary_sha256": "f1451e71115d65411eecf590f6a69111a754651e5582250555767ea6af358c19"
+      "binary_sha256": "8368ccb76a1216965ace32d09a2160526c5002568ec51fd99f91c8a18dddad09"
     },
     {
       "name": "containerd",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
-      "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
-      "member": "docker/containerd",
-      "binary_sha256": "151e63d48b843be79824a09efe610320bd4e07000009fa7d9d8e1481e1e85a50"
+      "version": "v2.4.1",
+      "url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz",
+      "sha256": "02ad3a7e80d7d2c018c7134d5eca7e301283db6895f100b957fb52ad8e5a30fd",
+      "checksum_url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz.sha256sum",
+      "member": "bin/containerd",
+      "binary_sha256": "45b43413b415efbc163ce2de800abd22cc86a1ae35a5e0685f91ea66bdb2c568"
     },
     {
       "name": "containerd-shim-runc-v2",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
-      "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
-      "member": "docker/containerd-shim-runc-v2",
-      "binary_sha256": "90533b9fb264f860c57b1b5ffa8da348d6a00ba8886510d3c7039dd7bec19edc"
+      "version": "v2.4.1",
+      "url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz",
+      "sha256": "02ad3a7e80d7d2c018c7134d5eca7e301283db6895f100b957fb52ad8e5a30fd",
+      "checksum_url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz.sha256sum",
+      "member": "bin/containerd-shim-runc-v2",
+      "binary_sha256": "ce5d6a694226f602baa2e1f44c43df7b0bd41888baf6f5d5d550dccc7de23241"
     },
     {
       "name": "ctr",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
-      "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
-      "member": "docker/ctr",
-      "binary_sha256": "e654ecb31070df40aab1efb74c5d4d75ded7f9b39b497fddb9dff547f1cdf4e1"
+      "version": "v2.4.1",
+      "url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz",
+      "sha256": "02ad3a7e80d7d2c018c7134d5eca7e301283db6895f100b957fb52ad8e5a30fd",
+      "checksum_url": "https://github.com/containerd/containerd/releases/download/v2.4.1/containerd-static-2.4.1-linux-amd64.tar.gz.sha256sum",
+      "member": "bin/ctr",
+      "binary_sha256": "79a2b8b339fd7e236b932f800b59024e3c47f2ad954a3720c583c1abcbd937e3"
     },
     {
       "name": "runc",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
-      "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
-      "member": "docker/runc",
-      "binary_sha256": "faad56f80efdce281ac1c28a6d03f04b761ff913a6be88c677ba26a4a96e2f9e"
+      "version": "v1.6.0-rc.1",
+      "url": "https://github.com/opencontainers/runc/releases/download/v1.6.0-rc.1/runc.amd64",
+      "sha256": "7ab1aa1d62350a2658b4c9050a41eb53fcbaa2e26062cf838d38c686b91f50cc",
+      "checksum_url": "https://github.com/opencontainers/runc/releases/download/v1.6.0-rc.1/runc.sha256sum",
+      "member": null,
+      "binary_sha256": "7ab1aa1d62350a2658b4c9050a41eb53fcbaa2e26062cf838d38c686b91f50cc"
     },
     {
       "name": "docker-init",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+      "version": "29.8.2",
+      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.2.tgz",
+      "sha256": "995d1ef289677f74fd58d8d2c35727b6a4ee389c69db8638a3e42d0487aa5b0f",
       "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
       "member": "docker/docker-init",
-      "binary_sha256": "f17d5b17245e589a39aceabecb57ac05c56460f66955dd79bf21f63fcc8edcaf"
+      "binary_sha256": "5ccb076690ac3d060511c63d02194bd5cefaba8dbf225fd60b26283eb1055e4b"
     },
     {
       "name": "docker-proxy",
-      "version": "29.8.0",
-      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
-      "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+      "version": "29.8.2",
+      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.2.tgz",
+      "sha256": "995d1ef289677f74fd58d8d2c35727b6a4ee389c69db8638a3e42d0487aa5b0f",
       "checksum_origin": "locally measured official HTTPS artifact; no published checksum",
       "member": "docker/docker-proxy",
-      "binary_sha256": "10a23e72fcdc2eeed010d9abb0baa73c6909f7b39848035d45c7663abb67c3de"
+      "binary_sha256": "905781d65ff8e3e9e06fdc2f50a243c454d112130f895e516285b472d49045c4"
     }
   ]
 }

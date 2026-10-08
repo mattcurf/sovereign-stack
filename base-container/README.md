@@ -14,10 +14,10 @@ particular package set's maintainer scripts. Ordinary Docker build works: no
 privileged builder or host bind mount is required. Future added packages may
 require mounts and must be tested, rather than disabling maintainer scripts.
 
-`sources.list` pins actual reachable archive snapshots checked on 2026-09-10:
+`sources.list` pins actual reachable archive snapshots checked on 2026-10-07:
 
-* Debian: **20260910T082439Z**
-* Debian security: **20260909T204253Z**
+* Debian: **20261007T144007Z**
+* Debian security: **20261007T080254Z**
 
 Both bootstrap installs and the generated rootfs use these sources exclusively.
 Direct build packages have explicit versions; all transitive versions are fixed
@@ -62,11 +62,11 @@ retain complete inventories and all CVE reports. No package or CVE is excluded.
 Trivy uses distro-aware vulnerability matching and default vendor severity with
 fallback where needed. Generic upstream binary identification can differ from
 Debian's package revision and backported fixes. Debian revision
-**3.5.7-1~deb13u2** includes the OpenSSL fixes described in
+**3.5.7-1~deb13u3** includes the OpenSSL fixes described in
 [DSA-6465-1 via Debian's tracker](https://security-tracker.debian.org/tracker/CVE-2026-63073).
 Finding counts are scanner- and database-dependent, not a cross-scanner invariant.
 
-`SOURCE_DATE_EPOCH=1789027200` fixes the reference time (2026-09-10 08:00 UTC);
+`SOURCE_DATE_EPOCH=1791360000` fixes the reference time (2026-10-07 08:00 UTC);
 mmdebstrap removes volatile metadata and the script clears logs/host identity.
 This does **not** establish bit-identical OCI output: builder versions, Docker
 export timestamps, filesystem metadata, package scripts and Python bytecode can

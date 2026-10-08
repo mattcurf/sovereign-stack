@@ -9,6 +9,8 @@ runs:
         path: |
           .tools/bin
           .tools/cache
+          !.tools/cache/go-mod
+          !.tools/cache/go-build
         key: tools-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/lock.json', 'tools/install.py') }}
     - name: Verify and install pinned tools
       shell: bash
